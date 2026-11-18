@@ -110,6 +110,11 @@ if (-not $SkipLinuxRelay) {
 
     if ($LASTEXITCODE -ne 0) {
         Write-Host 'WARNING: the linux-x64 relay could not be published; Dockerfiles still work.' -ForegroundColor Yellow
+    } else {
+        $lxcScript = Join-Path $root 'scripts\install-lxc.sh'
+        $lxcDoc = Join-Path $root 'docs\lxc-install.md'
+        if (Test-Path $lxcScript) { Copy-Item $lxcScript (Join-Path $relayOut 'install-lxc.sh') -Force }
+        if (Test-Path $lxcDoc) { Copy-Item $lxcDoc (Join-Path $relayOut 'lxc-install.md') -Force }
     }
 }
 
