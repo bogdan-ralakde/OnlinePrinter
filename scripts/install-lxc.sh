@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # LabelBridge relay installer for Linux (LXC / VM / bare metal, systemd).
 #
 # Installs the LabelBridge relay as a systemd service.
