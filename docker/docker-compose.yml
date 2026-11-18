@@ -1,0 +1,54 @@
+# LabelBridge relay - Docker Compose
+#
+#   1. copy this file to your NAS/server
+#   2. create a .env next to it with:   LB_ADMIN_SECRET=some-long-random-string
+#   3. docker compose up -d --build
+#
+# The relay speaks plain HTTP on 8080. Put it behind Caddy / Traefik / nginx /
+# Cloudflare Tunnel so remote Windows PCs talk to it over HTTPS.
+
+services:
+  relay:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: labelbridge/relay:1.0.0
+    container_name: labelbridge-relay
+    restart: unless-stopped
+
+    ports:
+      # bind on all interfaces; restrict to a proxy-only bridge if you prefer
+      - "8080:8080"
+
+    environment:
+      LB_LISTEN: "http://+:8080/"
+      LB_DATA: "/data"
+      LB_ADMIN_SECRET: "${LB_ADMIN_SECRET:?create a .env file with LB_ADMIN_SECRET=...}"
+      LB_RETENTION_HOURS: "${LB_RETENTION_HOURS:-168}"
+      LB_MAX_MB: "${LB_MAX_MB:-64}"
+      LB_MAX_JOBS: "${LB_MAX_JOBS:-1000}"
+
+    volumes:
+      - labelbridge-data:/data
+
+    # Uncomment when the relay itself should serve HTTPS with a real certificate
+    # (mount the PEM/PFX and pass --listen https://+:8443/ instead).
+    # volumes:
+    #   - labelbridge-data:/data
+    #   - ./certs:/certs:ro
+
+    healthcheck:
+      test: ["CMD", "dotnet", "/app/LabelBridge.Relay.dll", "--health-check", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  labelbridge-data:
