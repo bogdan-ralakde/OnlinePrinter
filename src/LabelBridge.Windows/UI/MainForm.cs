@@ -311,7 +311,7 @@ internal sealed class MainForm : Form
 
             if (hasUpdate)
             {
-                var prompt = msg + "\n\nDownload and install the Windows client update now? (Admin/UAC may be required. LabelBridge will close to complete the update.)\n\nServer updates can be applied from the server web UI (Settings) on Linux/systemd installs, or by running the LXC install script for the latest release.";
+                var prompt = msg + "\n\nDownload and install the Windows client update now? (Admin/UAC may be required. LabelBridge will close to complete the update.)\n\nServer updates can be applied from the server web UI (Settings) on Linux/systemd installs, or by running the server install script for the target release.";
                 if (Ui.Confirm(this, prompt, "Update available"))
                 {
                     AppendLog("Downloading and applying client update...");
@@ -322,7 +322,7 @@ internal sealed class MainForm : Form
             }
             else
             {
-                Ui.Info(this, msg + "\n\nServer updates can be applied from the server web UI (Settings) on Linux/systemd installs, or by running the LXC install script for the latest release.");
+                Ui.Info(this, msg + "\n\nServer updates can be applied from the server web UI (Settings) on Linux/systemd installs, or by running the server install script for the target release.");
             }
         }
         catch (Exception ex) { Ui.Error(this, ex.Message); }

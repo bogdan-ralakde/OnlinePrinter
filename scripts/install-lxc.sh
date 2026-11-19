@@ -1,22 +1,24 @@
-#!/usr/bin/env bash
-# LabelBridge all-in-one server installer for Linux (LXC / VM / bare metal, systemd).
+﻿#!/usr/bin/env bash
+# LabelBridge server installer for Linux (systemd: VM / bare metal / container).
 #
 # Installs LabelBridge as a systemd service. If a local binary/bundle is not
 # provided or found next to this script, it automatically downloads the latest
 # release asset from GitHub (repository must be public for unauthenticated download).
 #
 # Quick install (latest release):
-#   curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-lxc.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo bash
 #
 # Install a specific release:
-#   curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-lxc.sh | sudo LABELBRIDGE_VERSION=v1.0.0 bash
+#   curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo LABELBRIDGE_VERSION=v1.0.0 bash
 #
 # Local install (checkout or extracted bundle):
-#   sudo bash scripts/install-lxc.sh
-#   sudo bash scripts/install-lxc.sh --local /path/to/LabelBridge.Relay
+#   sudo bash scripts/install-linux.sh
+#   sudo bash scripts/install-linux.sh --local /path/to/LabelBridge.Relay
 #
 # Uninstall:
-#   sudo bash scripts/install-lxc.sh --uninstall [--purge]
+#   sudo bash scripts/install-linux.sh --uninstall [--purge]
+#
+# Compatibility: also available as scripts/install-lxc.sh.
 #
 # Environment:
 #   LABELBRIDGE_REPO     GitHub repo (default: bogdan-ralakde/OnlinePrinter)
@@ -206,10 +208,25 @@ install_main() {
   if [[ -f "$ENV_FILE" ]]; then
     admin_secret="$existing_secret"; ok "Keeping existing config $ENV_FILE"
   else
-    admin_secret="${LB_ADMIN_SECRET:-$(rand_secret)}"
+    admin_secret="${LB_ADMIN_SECRET:-}"
+    if [[ -z "$admin_secret" && -t 0 && -t 1 ]]; then
+      echo
+      echo "Initial admin password setup"
+      read -r -s -p "Create admin password (leave blank to set in web UI on first run): " admin_secret || true; echo
+      if [[ -n "$admin_secret" ]]; then
+        local admin_secret_confirm
+        read -r -s -p "Confirm admin password: " admin_secret_confirm || true; echo
+        if [[ "$admin_secret" != "$admin_secret_confirm" ]]; then
+          err "Passwords do not match."
+          exit 1
+        fi
+      fi
+    elif [[ -z "$admin_secret" ]]; then
+      info "No LB_ADMIN_SECRET provided and not running interactively; admin password will be created in the web UI on first run."
+    fi
     cat > "$ENV_FILE" <<EOF
 # LabelBridge server configuration
-# LB_ADMIN_SECRET is used as the initial admin password on first setup (if no admin account exists yet).
+# Optional: pre-set the admin password. If left blank, open the web UI on first run to create the admin password.
 LB_LISTEN=http://+:8080/
 LB_DATA=${DATA_DIR}
 LB_ADMIN_SECRET=${admin_secret}
@@ -264,16 +281,18 @@ EOF
   echo "  Config  : $ENV_FILE"
   echo "  Data    : $DATA_DIR"
   echo "  Listen  : $listen_port"
-  echo "  Web UI  : http://${ip}:8080/   (login as admin)"
+  echo "  Web UI  : http://${ip}:8080/"
   echo "  Health  : http://${ip}:8080/health"
   [[ "$health_ok" == "true" ]] && echo -e "  Status  : ${GREEN}OK${NC}" || warn "Health not ready yet: journalctl -u $APP_NAME -n 80 --no-pager"
+  echo "  Admin   : admin"
   if [[ -n "$admin_secret" ]]; then
-    echo "  Initial admin password: $admin_secret"
-    echo "  (saved as LB_ADMIN_SECRET in $ENV_FILE; used for first admin login/setup if needed)"
+    echo "  Initial admin password: (configured during install; stored in $ENV_FILE)"
+  else
+    echo "  Initial admin password: create it in the web UI on first run"
   fi
   echo
   echo "Manage: systemctl status $APP_NAME | journalctl -u $APP_NAME -f"
-  echo "Tip: for internet use, put HTTPS reverse proxy in front of the web UI/API."
+  echo "Next: open the web UI to complete initial admin setup/login (create password on first run if not preconfigured), configure printer, upload/select driver if needed, and approve Windows clients."
 }
 
 main() {

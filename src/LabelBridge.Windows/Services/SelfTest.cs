@@ -5,7 +5,7 @@ using LabelBridge.Core.Server;
 namespace LabelBridge.Services;
 
 /// <summary>
-/// Built-in verification for the server+client (Option A) architecture.
+/// Built-in verification for the server + Windows client architecture.
 /// Runs locally with no GUI, no hardware and no internet access.
 /// </summary>
 internal static class SelfTest
@@ -16,7 +16,7 @@ internal static class SelfTest
     public static int Run(string[] args)
     {
         Log.Minimum = LogLevel.Warn;
-        Console.WriteLine("LabelBridge self-test (Option A)");
+        Console.WriteLine("LabelBridge self-test (server + Windows client)");
         Console.WriteLine("================================");
 
         var root = Path.Combine(Path.GetTempPath(), "labelbridge-selftest-" + Guid.NewGuid().ToString("N")[..8]);

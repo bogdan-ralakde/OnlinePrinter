@@ -1,10 +1,10 @@
-# LXC / Linux installation (LabelBridge all-in-one server)
+﻿# Linux installation (LabelBridge server)
 
-This installs the **LabelBridge server** on a Linux host (Proxmox LXC, Incus/LXD, Debian/Ubuntu VM, etc.) as a `systemd` service. The server is intended to run on the same LAN as the network printer (and can be exposed over the internet behind HTTPS for client access).
+This installs the **LabelBridge server** on a Linux host (Debian/Ubuntu VM, bare metal, Linux container, etc.) as a `systemd` service. The server should be able to reach the network printer (typically on the same LAN) and can be exposed over the internet behind HTTPS for client access.
 
 ## What gets installed
 
-- Self-contained `LabelBridge.Relay` binary in `/opt/labelbridge` (kept name for upgrade/install compatibility)
+- Self-contained `LabelBridge.Relay` binary in `/opt/labelbridge` (name kept for install/upgrade compatibility)
 - Systemd service: `labelbridge-relay` (runs as unprivileged user `labelbridge`)
 - Config: `/etc/labelbridge/relay.env` (listen address, data dir, initial admin secret, limits)
 - Data: `/var/lib/labelbridge` (server state, queue, uploaded drivers, jobs)
@@ -14,29 +14,29 @@ This installs the **LabelBridge server** on a Linux host (Proxmox LXC, Incus/LXD
 ## Quick install (latest release)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-lxc.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo bash
 ```
 
 Install a specific release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-lxc.sh | sudo LABELBRIDGE_VERSION=v1.0.0 bash
+curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo LABELBRIDGE_VERSION=v1.0.0 bash
 ```
 
 Local/bundle install:
 
 ```bash
-sudo bash scripts/install-lxc.sh
+sudo bash scripts/install-linux.sh
 # or
-sudo bash scripts/install-lxc.sh --local /path/to/relay-linux-x64
+sudo bash scripts/install-linux.sh --local /path/to/relay-linux-x64
 ```
 
 ## First run
 
 1. Check service: `systemctl status labelbridge-relay` and `curl -s http://127.0.0.1:8080/health`
 2. Open web UI: `http://<server-ip>:8080/`
-3. Login as `admin`.
-   - `LB_ADMIN_SECRET` in `/etc/labelbridge/relay.env` is used as the **initial admin password** on first setup (installer generates and prints it). Change it in **Settings** after login.
+3. **Initial admin setup (first run):** open the web UI â€” if no admin password is configured yet, it will prompt you to **create the admin password**.
+   - If run interactively, the install script can prompt you to set the admin password (or you can pre-set `LB_ADMIN_SECRET`); if set, it is stored in `/etc/labelbridge/relay.env` and used as the initial password. If left blank, create the password in the web UI on first run. **Note:** reinstalling/upgrading keeps existing config and data by default, so an already-configured admin password is preserved (no setup prompt). To force first-run setup on a fresh state, reset server data (see troubleshooting).
 4. Configure printer in **Printer** tab (e.g. `192.168.50.25:9100`, profile like Zebra ZD420 300dpi ZPL as applicable), run **Test connection** / **Send test label**, and/or use **Scan**.
 5. (Optional) Upload/select a Windows driver/installer package in **Drivers** so approved clients can download it.
 6. Install/run LabelBridge Windows client, set server URL, submit connection request, approve in **Clients**, then install/repair the local "LabelBridge" virtual printer and print.
@@ -54,7 +54,7 @@ sudo systemctl restart labelbridge-relay
 |---|---|---|
 | `LB_LISTEN` | `http://+:8080/` | HTTP listener (web UI + API) |
 | `LB_DATA` | `/var/lib/labelbridge` | Persistent storage (state, queue, drivers, jobs) |
-| `LB_ADMIN_SECRET` | *(generated)* | Initial admin password for first setup/login |
+| `LB_ADMIN_SECRET` | *(empty unless set)* | Optional preconfigured admin password (if empty, create it in the web UI on first run) |
 | `LB_RETENTION_HOURS` | `168` | Retention window (hours) |
 | `LB_MAX_MB` | `128` | Max upload/job size (MB) |
 | `LB_MAX_JOBS` | `2000` | Max queued jobs |
@@ -77,19 +77,19 @@ print.example.com {
 Re-run the installer (or install a newer release tag). It stops the service, replaces the binary, keeps `/etc/labelbridge/relay.env` and `/var/lib/labelbridge`, and restarts:
 
 ```bash
-sudo bash install-lxc.sh
-# or local: sudo bash install-lxc.sh --local /path/to/LabelBridge.Relay
+sudo bash install-linux.sh (or install-lxc.sh)
+# or local: sudo bash install-linux.sh (or install-lxc.sh) --local /path/to/LabelBridge.Relay
 ```
 
 ## Uninstall
 
 ```bash
-sudo bash install-lxc.sh --uninstall         # keep config and data
-sudo bash install-lxc.sh --uninstall --purge # remove everything
+sudo bash install-linux.sh (or install-lxc.sh) --uninstall         # keep config and data
+sudo bash install-linux.sh (or install-lxc.sh) --uninstall --purge # remove everything
 ```
 
 ## Notes
 
-- The LXC/server must be able to reach the network printer over TCP (typically port 9100).
+- The server must be able to reach the network printer over TCP (typically port 9100).
 - Printing raw captured data depends on printer/driver compatibility (e.g. ZPL to a ZPL printer). If a Windows driver produces PDF/EMF/XPS, the target printer must support that format or an appropriate driver/profile/conversion must be used.
 - For internet exposure, use HTTPS and strong admin credentials; approve only trusted clients.

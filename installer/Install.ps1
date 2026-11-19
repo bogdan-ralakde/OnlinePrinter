@@ -257,7 +257,7 @@ Write-Host '  Settings   : ' -NoNewline; Write-Host (Join-Path $dataDir 'setting
 Write-Host '  Virtual pr.: ' -NoNewline
 if ($printerOk) { Write-Host 'installed' -ForegroundColor Green } else { Write-Host 'not installed yet (Printer tab)' -ForegroundColor Yellow }
 Write-Host ''
-Write-Host '  First run (Option A):'
+Write-Host '  First run:'
 Write-Host '    1. Open LabelBridge and set the LabelBridge server URL (web UI/API base URL)'
 Write-Host '    2. Submit a connection request and wait for admin approval in the server web UI'
 Write-Host '    3. Download/install the server-provided driver/profile if required, then install/repair the local "LabelBridge" virtual printer (admin)'

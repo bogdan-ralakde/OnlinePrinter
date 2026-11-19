@@ -5,8 +5,8 @@ using System.Text.Json.Serialization;
 namespace LabelBridge.Core;
 
 /// <summary>
-/// Client settings for LabelBridge Windows app (Option A): local virtual printer capture +
-/// upload to LabelBridge server over HTTP(S) after admin approval.
+/// Client settings for the LabelBridge Windows app: local virtual printer capture
+/// and upload to an approved LabelBridge server.
 /// </summary>
 public sealed class AppSettings
 {

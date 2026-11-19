@@ -112,6 +112,8 @@ public sealed class LabelBridgeServer : IDisposable
     private async Task HandleApi(HttpListenerRequest req, HttpListenerResponse res, string path, string method)
     {
         // Public auth endpoints
+        if (path == "/api/status" && method == "GET") { await WriteJson(res, 200, new { ok = true, version = _config.CurrentVersion, needsSetup = _store.NeedsSetup, setupComplete = _store.State.SetupComplete, mustChangePassword = _store.State.Admin.MustChangePassword }); return; }
+        if (path == "/api/auth/setup" && method == "POST") { await ApiSetup(req, res); return; }
         if (path == "/api/auth/login" && method == "POST") { await ApiLogin(req, res); return; }
         if (path == "/api/auth/logout" && method == "POST") { _store.Logout(GetBearer(req)); res.StatusCode = 204; return; }
         if (path == "/api/auth/me" && method == "GET") { await ApiMe(req, res); return; }
@@ -196,21 +198,32 @@ public sealed class LabelBridgeServer : IDisposable
         return null;
     }
 
+    private async Task ApiSetup(HttpListenerRequest req, HttpListenerResponse res)
+    {
+        var body = await ReadJsonAsync<JsonElement>(req);
+        var user = body.TryGetProperty("username", out var u) ? u.GetString() : null;
+        var pass = body.TryGetProperty("password", out var p) ? p.GetString() ?? "" : "";
+        var (ok, token, err) = _store.SetupInitialAdmin(user, pass);
+        if (!ok) { await WriteJson(res, 400, new { ok = false, error = err }); return; }
+        res.Headers["Set-Cookie"] = $"lb_session={Uri.EscapeDataString(token!)}; Path=/; HttpOnly; SameSite=Lax";
+        await WriteJson(res, 200, new { ok = true, token, user = _store.State.Admin.Username });
+    }
+
     private async Task ApiLogin(HttpListenerRequest req, HttpListenerResponse res)
     {
         var body = await ReadJsonAsync<JsonElement>(req);
         var user = body.TryGetProperty("username", out var u)?u.GetString():"";
         var pass = body.TryGetProperty("password", out var p)?p.GetString():"";
         var (ok, token, err) = _store.Login(user??"", pass??"");
-        if (!ok) { await WriteJson(res, 401, new { error = err }); return; }
+        if (!ok) { await WriteJson(res, 401, new { ok = false, error = err }); return; }
         res.Headers["Set-Cookie"] = $"lb_session={Uri.EscapeDataString(token!)}; Path=/; HttpOnly; SameSite=Lax";
         await WriteJson(res, 200, new { ok=true, token, mustChange=_store.State.Admin.MustChangePassword });
     }
 
     private async Task ApiMe(HttpListenerRequest req, HttpListenerResponse res)
     {
-        if (!IsAuthed(req)) { await WriteJson(res, 401, new { authenticated=false }); return; }
-        await WriteJson(res, 200, new { authenticated=true, username=_store.State.Admin.Username, mustChange=_store.State.Admin.MustChangePassword, setupComplete=_store.State.SetupComplete, version=_config.CurrentVersion });
+        if (!IsAuthed(req)) { await WriteJson(res, 401, new { authenticated=false, needsSetup=_store.NeedsSetup }); return; }
+        await WriteJson(res, 200, new { authenticated=true, username=_store.State.Admin.Username, mustChange=_store.State.Admin.MustChangePassword, setupComplete=_store.State.SetupComplete, needsSetup=_store.NeedsSetup, version=_config.CurrentVersion });
     }
 
     private async Task ApiChangePassword(HttpListenerRequest req, HttpListenerResponse res)
@@ -580,7 +593,7 @@ public sealed class LabelBridgeServer : IDisposable
     }
 
     private static string ManualUpgradeCommand(string tag)
-        => "curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-lxc.sh | sudo LABELBRIDGE_VERSION=" + tag + " bash";
+        => "curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo LABELBRIDGE_VERSION=" + tag + " bash";
 
     private static async Task DownloadToFileAsync(HttpClient http, string url, string dest)
     {

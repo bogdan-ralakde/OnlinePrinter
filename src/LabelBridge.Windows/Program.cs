@@ -127,7 +127,7 @@ LabelBridge Client - virtual printer that sends jobs to LabelBridge server
   LabelBridge --printer-remove        Remove the local virtual printer (admin)
   LabelBridge --printer-status        Show detected printers/drivers as JSON
   LabelBridge --printer-script        Print printer install PowerShell script
-  LabelBridge --selftest              Run built-in Option A sanity checks
+  LabelBridge --selftest              Run built-in sanity checks
   LabelBridge --paths                 Show data folders
 """);
     }

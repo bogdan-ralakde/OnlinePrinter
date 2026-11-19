@@ -40,18 +40,26 @@ nav button.active{outline:2px solid #2f7fd6}
 </head>
 <body>
 <header>
-  <div><h1>LabelBridge Server</h1><div class="muted small" id="hdrSub">All-in-one print server (LXC)</div></div>
+  <div><h1>LabelBridge Server</h1><div class="muted small" id="hdrSub">Print server & web UI</div></div>
   <div class="row"><span id="userInfo" class="muted small"></span><button id="logoutBtn" class="hidden" onclick="logout()">Logout</button></div>
 </header>
 <div class="wrap">
   <div id="msg"></div>
+
+  <div id="setupView" class="card hidden" style="max-width:460px;margin:40px auto">
+    <h2>Initial setup</h2>
+    <div class="muted small">First run: create the admin account and password for this server.</div>
+    <label>Username</label><input id="setupUser" value="admin">
+    <label>Password</label><input id="setupPass" type="password" placeholder="At least 6 characters">
+    <label>Confirm password</label><input id="setupPass2" type="password">
+    <div class="row" style="margin-top:12px"><button class="primary" onclick="doSetup()">Create admin account</button></div>
+  </div>
 
   <div id="loginView" class="card hidden" style="max-width:420px;margin:40px auto">
     <h2>Admin login</h2>
     <label>Username</label><input id="loginUser" value="admin">
     <label>Password</label><input id="loginPass" type="password">
     <div class="row" style="margin-top:12px"><button class="primary" onclick="doLogin()">Login</button></div>
-    <div class="muted small" style="margin-top:10px">If this is a new install, the initial password was shown in the service logs (journalctl) unless set via LB_ADMIN_SECRET.</div>
   </div>
 
   <div id="appView" class="hidden">
@@ -77,11 +85,42 @@ async function api(path, opts={}){
   return data;
 }
 function esc(s){return (s??'').toString().replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]))}
-function showLogin(){document.getElementById('loginView').classList.remove('hidden'); document.getElementById('appView').classList.add('hidden'); document.getElementById('logoutBtn').classList.add('hidden'); document.getElementById('userInfo').textContent='';}
-function showApp(){document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); document.getElementById('logoutBtn').classList.remove('hidden'); document.getElementById('userInfo').textContent=(S.me&&S.me.username)||'admin'; renderTabs(); showTab(S.tab);}
-async function init(){ try{ if(S.token){ S.me=await api('/api/auth/me'); if(S.me.authenticated){showApp(); return;} } }catch{} showLogin(); }
-async function doLogin(){ try{ msg('Logging in...'); const d=await api('/api/auth/login',{method:'POST',body:{username:document.getElementById('loginUser').value,password:document.getElementById('loginPass').value}}); S.token=d.token; localStorage.setItem('lb_token',S.token); S.me=await api('/api/auth/me'); msg(d.mustChange?'Logged in. Please change the initial password in Settings.':''); showApp(); if(d.mustChange) showTab('settings'); }catch(e){msg(e.message,true)} }
-function logout(){ S.token=''; localStorage.removeItem('lb_token'); api('/api/auth/logout',{method:'POST'}).catch(()=>{}); showLogin(); }
+function showSetup(){document.getElementById('setupView').classList.remove('hidden'); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.add('hidden'); document.getElementById('logoutBtn').classList.add('hidden'); document.getElementById('userInfo').textContent='';}
+function showLogin(){document.getElementById('setupView').classList.add('hidden'); document.getElementById('loginView').classList.remove('hidden'); document.getElementById('appView').classList.add('hidden'); document.getElementById('logoutBtn').classList.add('hidden'); document.getElementById('userInfo').textContent='';}
+function showApp(){document.getElementById('setupView').classList.add('hidden'); document.getElementById('loginView').classList.add('hidden'); document.getElementById('appView').classList.remove('hidden'); document.getElementById('logoutBtn').classList.remove('hidden'); document.getElementById('userInfo').textContent=(S.me&&S.me.username)||'admin'; renderTabs(); showTab(S.tab);}
+async function init(){
+  try{ const st=await api('/api/status').catch(()=>null); if(st&&st.needsSetup){ showSetup(); return; } }catch{}
+  try{ if(S.token){ S.me=await api('/api/auth/me'); if(S.me&&S.me.authenticated){ showApp(); return; } } }catch{}
+  try{ const st2=await api('/api/status').catch(()=>null); if(st2&&st2.needsSetup){ showSetup(); return; } }catch{}
+  showLogin();
+}
+async function doSetup(){
+  try{
+    const u=document.getElementById('setupUser').value||'admin';
+    const p=document.getElementById('setupPass').value||'';
+    const p2=document.getElementById('setupPass2').value||'';
+    if(p.length<6){ msg('Password must be at least 6 characters.', true); return; }
+    if(p!==p2){ msg('Passwords do not match.', true); return; }
+    msg('Creating admin account...');
+    const d=await api('/api/auth/setup',{method:'POST',body:{username:u,password:p}});
+    S.token=d.token; localStorage.setItem('lb_token',S.token);
+    try{ S.me=await api('/api/auth/me'); }catch{ S.me={username:u, authenticated:true}; }
+    msg('Admin account created.');
+    showApp();
+  }catch(e){ msg(e.message,true); }
+}
+async function doLogin(){
+  try{
+    msg('Logging in...');
+    const d=await api('/api/auth/login',{method:'POST',body:{username:document.getElementById('loginUser').value,password:document.getElementById('loginPass').value}});
+    S.token=d.token; localStorage.setItem('lb_token',S.token);
+    S.me=await api('/api/auth/me');
+    msg(d.mustChange?'Logged in. Please change the initial password in Settings.':'');
+    showApp();
+    if(d.mustChange) showTab('settings');
+  }catch(e){ msg(e.message,true); }
+}
+function logout(){ S.token=''; localStorage.removeItem('lb_token'); api('/api/auth/logout',{method:'POST'}).catch(()=>{}); init(); }
 const TABDEFS=[['dashboard','Dashboard'],['printer','Printer'],['clients','Clients'],['jobs','Jobs'],['drivers','Drivers'],['settings','Settings']];
 function renderTabs(){ const n=document.getElementById('tabs'); n.innerHTML=TABDEFS.map(([id,name])=>`<button class="${S.tab===id?'active':''}" onclick="showTab('${id}')">${name}</button>`).join(''); }
 async function showTab(id){ S.tab=id; renderTabs(); document.querySelectorAll('.tab').forEach(t=>t.classList.add('hidden')); document.getElementById('tab-'+id).classList.remove('hidden'); try{ if(id==='dashboard') await loadDash(); if(id==='printer') await loadPrinter(); if(id==='clients') await loadClients(); if(id==='jobs') await loadJobs(); if(id==='drivers') await loadDrivers(); if(id==='settings') await loadSettings(); }catch(e){msg(e.message,true)} }
@@ -176,7 +215,7 @@ async function loadSettings(){ const me=await api('/api/auth/me'); const info=aw
     : `<div class="small muted">Update info unavailable: ${esc(upd&&upd.error||'unknown')}</div><div class="row" style="margin-top:10px"><button onclick="loadSettings()">Retry</button></div>`;
   document.getElementById('tab-settings').innerHTML=`<div class="grid">
     <div class="card"><h2>Admin password</h2>
-      ${me.mustChange?'<div class="pill pending">Initial password must be changed</div>':''}
+      ${me.mustChange?'<div class="pill pending">Password change recommended</div>':''}
       <label>Current password</label><input id="curPw" type="password"><label>New password</label><input id="newPw" type="password">
       <div class="row" style="margin-top:10px"><button class="primary" onclick="changePw()">Change password</button></div>
     </div>

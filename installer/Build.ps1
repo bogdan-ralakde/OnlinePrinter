@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Builds LabelBridge Windows client package and Linux server (LXC) bundle.
+    Builds LabelBridge Windows client package and Linux server bundle.
 
 .DESCRIPTION
     Produces:
@@ -10,8 +10,8 @@
           Install.ps1, Uninstall.ps1, Setup.cmd, Uninstall.cmd
           README.md, VERSION.txt
       dist\LabelBridge-<version>-win-x64.zip
-      dist\relay-linux-x64\LabelBridge.Relay        (Linux server binary for LXC)
-      dist\labelbridge-relay-linux-x64.tar.gz       (LXC install asset for GitHub releases)
+      dist\relay-linux-x64\LabelBridge.Relay        (Linux server binary)
+      dist\labelbridge-relay-linux-x64.tar.gz       (Linux server release/install asset)
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File installer\Build.ps1 -Version 1.0.0
@@ -98,9 +98,9 @@ Built $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Runtime $Runtime (self-contained: $selfContained)
 "@ | Set-Content (Join-Path $app 'VERSION.txt') -Encoding UTF8
 
-# ---------------------------------------------------------------- linux server (LXC)
+# ---------------------------------------------------------------- linux server
 if (-not $SkipLinuxRelay) {
-    Step 'Publishing the Linux server for linux-x64 (for LXC / non-Docker installs)'
+    Step 'Publishing the Linux server for linux-x64'
     $relayOut = Join-Path $dist 'relay-linux-x64'
     $tarPath  = Join-Path $dist 'labelbridge-relay-linux-x64.tar.gz'
     if (Test-Path $relayOut) { Remove-Item $relayOut -Recurse -Force }
@@ -114,12 +114,12 @@ if (-not $SkipLinuxRelay) {
     if ($LASTEXITCODE -ne 0) {
         Write-Host 'WARNING: the linux-x64 server could not be published.' -ForegroundColor Yellow
     } else {
-        $lxcScript = Join-Path $root 'scripts\install-lxc.sh'
-        $lxcDoc = Join-Path $root 'docs\lxc-install.md'
-        if (Test-Path $lxcScript) { Copy-Item $lxcScript (Join-Path $relayOut 'install-lxc.sh') -Force }
-        if (Test-Path $lxcDoc) { Copy-Item $lxcDoc (Join-Path $relayOut 'lxc-install.md') -Force }
+        $installScript = Join-Path $root 'scripts\install-lxc.sh'
+        $installDoc = Join-Path $root 'docs\linux-install.md'
+        if (Test-Path $installScript) { Copy-Item $installScript (Join-Path $relayOut 'install-lxc.sh') -Force }
+        if (Test-Path $installDoc) { Copy-Item $installDoc (Join-Path $relayOut 'linux-install.md') -Force }
 
-        # Create GitHub release asset expected by scripts/install-lxc.sh
+        # Create release asset expected by the Linux install script
         try {
             Push-Location $dist
             $tarExe = Get-Command tar.exe -ErrorAction SilentlyContinue
@@ -128,7 +128,7 @@ if (-not $SkipLinuxRelay) {
                 & $tarExe.Source -czf 'labelbridge-relay-linux-x64.tar.gz' -C 'relay-linux-x64' '.'
                 if ($LASTEXITCODE -eq 0) { Write-Host "  tarball : $tarPath" -ForegroundColor DarkGray }
             } else {
-                Write-Host 'WARNING: tar not found; skipping labelbridge-relay-linux-x64.tar.gz (required for LXC auto-install releases).' -ForegroundColor Yellow
+                Write-Host 'WARNING: tar not found; skipping labelbridge-relay-linux-x64.tar.gz (required for Linux release installs).' -ForegroundColor Yellow
             }
         } finally { Pop-Location }
     }
@@ -153,8 +153,8 @@ if (-not $SkipZip -and (Test-Path $zip)) { Write-Host ("  zip    : {0}" -f $zip)
 if (-not $SkipLinuxRelay -and (Test-Path $tar)) { Write-Host ("  server : {0}" -f $tar) }
 Write-Host ''
 Write-Host 'Next steps:'
-Write-Host "  1. Deploy/update LXC server: publish labelbridge-relay-linux-x64.tar.gz release, then run scripts/install-lxc.sh on server"
-Write-Host "  2. Open server web UI, login as admin, configure printer and upload/select driver/profile as needed"
+Write-Host "  1. Deploy/update server: publish labelbridge-relay-linux-x64.tar.gz release, then run scripts/install-linux.sh on the server (or install-lxc.sh for compatibility)"
+Write-Host "  2. Open server web UI, complete first-run admin setup/login, configure printer and upload/select driver/profile as needed"
 Write-Host "  3. Install LabelBridge client on Windows (Setup.cmd), set server URL, request approval, install/repair virtual printer"
 Write-Host "  4. Approve client in web UI; print from any app to the local 'LabelBridge' printer"
 Write-Host ''

@@ -4,7 +4,7 @@ using LabelBridge.Core.Server;
 namespace LabelBridge.Relay;
 
 /// <summary>
-/// LabelBridge all-in-one server (LXC/Linux/Windows). Hosts web UI + API for
+/// LabelBridge all-in-one server (Linux/Windows). Hosts web UI + API for
 /// admin auth/setup, printer discovery/config, client approval, job queue and
 /// direct printing to a network printer (TCP 9100). Windows clients register and
 /// upload print jobs over HTTP(S).

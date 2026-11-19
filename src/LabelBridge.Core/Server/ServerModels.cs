@@ -178,17 +178,55 @@ public sealed class ServerStore
     {
         lock (_gate)
         {
-            if (State.SetupComplete && !string.IsNullOrEmpty(State.Admin.PasswordHash)) return;
-            var pwd = string.IsNullOrWhiteSpace(initialSecret) ? ServerCrypto.NewToken(12) : initialSecret.Trim();
-            var (hash, salt) = ServerCrypto.HashPassword(pwd);
+            if (!string.IsNullOrEmpty(State.Admin.PasswordHash)) return; // already configured
+
             State.Admin.Username = string.IsNullOrWhiteSpace(State.Admin.Username) ? "admin" : State.Admin.Username;
+            if (!string.IsNullOrWhiteSpace(initialSecret))
+            {
+                var (hash, salt) = ServerCrypto.HashPassword(initialSecret.Trim());
+                State.Admin.PasswordHash = hash;
+                State.Admin.PasswordSalt = salt;
+                State.Admin.MustChangePassword = false;
+                State.SetupComplete = true;
+                Save();
+            }
+            else
+            {
+                // First run with no preconfigured secret: require interactive setup via web UI/API.
+                State.Admin.PasswordHash = "";
+                State.Admin.PasswordSalt = "";
+                State.Admin.MustChangePassword = false;
+                State.SetupComplete = false;
+                Save();
+                Log.Info("Admin setup required: open the web UI to create the initial admin password.");
+            }
+        }
+    }
+
+    public bool NeedsSetup
+    {
+        get { lock (_gate) return string.IsNullOrEmpty(State.Admin.PasswordHash); }
+    }
+
+    public (bool ok, string? token, string? error) SetupInitialAdmin(string? username, string? password)
+    {
+        lock (_gate)
+        {
+            if (!string.IsNullOrEmpty(State.Admin.PasswordHash))
+                return (false, null, "Already configured.");
+            if (string.IsNullOrWhiteSpace(password) || password.Length < 6)
+                return (false, null, "Password must be at least 6 characters.");
+            var user = string.IsNullOrWhiteSpace(username) ? "admin" : username.Trim();
+            var (hash, salt) = ServerCrypto.HashPassword(password);
+            State.Admin.Username = user;
             State.Admin.PasswordHash = hash;
             State.Admin.PasswordSalt = salt;
-            State.Admin.MustChangePassword = string.IsNullOrWhiteSpace(initialSecret);
-            State.SetupComplete = false;
+            State.Admin.MustChangePassword = false;
+            State.SetupComplete = true;
             Save();
-            if (string.IsNullOrWhiteSpace(initialSecret))
-                Log.Warn($"Initial admin password (change on first login): {pwd}");
+            var token = ServerCrypto.NewToken(32);
+            _sessions[token] = new SessionRecord { Token = token, Username = State.Admin.Username, ExpiresUtc = DateTime.UtcNow.AddHours(12) };
+            return (true, token, null);
         }
     }
 
@@ -196,6 +234,8 @@ public sealed class ServerStore
     {
         lock (_gate)
         {
+            if (string.IsNullOrEmpty(State.Admin.PasswordHash))
+                return (false, null, "Initial setup required.");
             if (!string.Equals(username?.Trim(), State.Admin.Username, StringComparison.OrdinalIgnoreCase))
                 return (false, null, "Invalid credentials.");
             if (!ServerCrypto.VerifyPassword(password ?? "", State.Admin.PasswordHash, State.Admin.PasswordSalt))

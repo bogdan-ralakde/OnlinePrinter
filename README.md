@@ -1,10 +1,10 @@
-# LabelBridge
+﻿# LabelBridge
 
 LabelBridge v1.0.0 is an all-in-one label print server with a web UI plus a Windows client.
 
-- **Server (Linux LXC/systemd, Docker, or console)**: admin login/setup, client approval, printer configuration (manual IP:port, probe/scan/test), durable queue, and direct printing to a network printer over TCP/9100.
-- **Windows client (Option A)**: installs a local virtual printer named `LabelBridge`. Any app can print to it; the client captures jobs, uploads them to the approved server, and the server forwards them directly to the configured network printer.
-- **No Windows host-agent / relay pairing flow** in v1.0.0. Clients connect to the server URL and are approved in the web UI.
+- **Server (Linux/systemd, Docker, or console)**: admin login/setup, client approval, printer configuration (manual IP:port, probe/scan/test), durable queue, and direct printing to a network printer over TCP/9100.
+- **Windows client**: installs a local virtual printer named `LabelBridge`. Any app can print to it; the client captures jobs, uploads them to the approved server, and the server forwards them directly to the configured network printer.
+- Clients connect to the server URL and are approved in the web UI (no Windows host-agent/relay pairing).
 
 ## Architecture
 
@@ -31,23 +31,23 @@ Windows app -> local "LabelBridge" virtual printer -> LabelBridge Windows client
 - **Auto-update apply is best-effort.**
   - **Server:** Linux/systemd installs can download the latest `labelbridge-relay-linux-x64.tar.gz`, verify checksum when a release checksum asset is available, replace the binary if writable, and request restart; otherwise a manual upgrade command is shown.
   - **Windows client:** checks GitHub releases, downloads a Windows asset (`LabelBridge-*-win-x64.zip` preferred), verifies checksum when available, stages and launches an elevated updater; manual install from release assets remains the fallback.
-- **Not fully end-to-end validated in this environment:** real network printers, elevated Windows driver/virtual-printer install, LXC/Docker deployment, and production GitHub release publish/download flows.
+- **Not fully end-to-end validated in this environment:** real network printers, elevated Windows driver/virtual-printer install, Linux/Docker deployment, and production GitHub release publish/download flows.
 
-## Server installation (Linux LXC/systemd, preserved contract)
+## Server installation (Linux/systemd)
 
 Install latest release (public repo):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-lxc.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo bash
 ```
 
 Install specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-lxc.sh | sudo LABELBRIDGE_VERSION=v1.0.0 bash
+curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo LABELBRIDGE_VERSION=v1.0.0 bash
 ```
 
-Preserved install/runtime contract:
+Install/runtime contract (preserved for upgrades):
 - Service: `labelbridge-relay`
 - Binary: `/opt/labelbridge/LabelBridge.Relay`
 - Config/env: `/etc/labelbridge/relay.env` (`LB_*` vars)
@@ -55,7 +55,7 @@ Preserved install/runtime contract:
 - Health: `GET /health` and `LabelBridge.Relay --health-check <url>`
 - Release asset: `labelbridge-relay-linux-x64.tar.gz`
 
-See [`docs/lxc-install.md`](docs/lxc-install.md) for details, reverse proxy/HTTPS guidance, upgrade, and uninstall.
+See [`docs/linux-install.md`](docs/linux-install.md) for details, reverse proxy/HTTPS guidance, upgrade, and uninstall.
 
 ## Docker
 
@@ -85,7 +85,8 @@ LabelBridge.exe --send <file> [--server <url> --token <approved-client-token>]
 
 ## Server web UI (admin)
 
-- **Setup/Login:** initial admin password comes from `LB_ADMIN_SECRET` on first setup; change it in **Settings**.
+- **Initial setup (first run):** if no admin password is configured, opening the web UI prompts you to **create the admin password** (username defaults to `admin`). Optionally the password can be preconfigured via `LB_ADMIN_SECRET` / installer prompt for automated setups.
+- **Login:** sign in as `admin` with the configured password; change it in **Settings** when needed.
 - **Printer:** configure name/host/port/profile, test connection, scan subnet, send test label, enable/disable printing.
 - **Clients:** approve/decline/revoke/delete registered clients.
 - **Drivers:** upload unmodified driver packages/installers, select active package for clients, delete.
@@ -113,7 +114,7 @@ powershell -ExecutionPolicy Bypass -File LabelBridge/installer/Build.ps1 -Versio
 
 - Version: `1.0.0`
 - Expected release assets for installer/update flows:
-  - `labelbridge-relay-linux-x64.tar.gz` (server/LXC install & server auto-update)
+  - `labelbridge-relay-linux-x64.tar.gz` (Linux server install & server auto-update)
   - `LabelBridge-1.0.0-win-x64.zip` (Windows client package & client auto-update)
   - Optional checksum asset (for example `SHA256SUMS.txt`) for integrity verification
 
@@ -123,11 +124,11 @@ powershell -ExecutionPolicy Bypass -File LabelBridge/installer/Build.ps1 -Versio
 LabelBridge/
   src/LabelBridge.Core/        server logic, storage, queue/print services, embedded web UI, shared utilities
   src/LabelBridge.Windows/     Windows client UI/services/capture/printer helpers/CLI
-  src/LabelBridge.Relay/       server host/entrypoint (binary name kept for LXC contract)
-  scripts/install-lxc.sh       Linux LXC/systemd install/upgrade/uninstall (auto-download release asset)
+  src/LabelBridge.Relay/       server host/entrypoint (binary/service name kept for install compatibility)
+  scripts/install-linux.sh       Linux (systemd) install/upgrade/uninstall script (auto-downloads release asset)
   installer/                   Windows package build/install/uninstall scripts
   docker/                      Dockerfile, compose, entrypoint
-  docs/lxc-install.md          LXC/server deployment notes
+  docs/linux-install.md        Linux server deployment notes
   docs/troubleshooting.md      troubleshooting
 ```
 
