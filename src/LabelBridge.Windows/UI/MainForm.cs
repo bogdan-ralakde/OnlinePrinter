@@ -168,8 +168,9 @@ internal sealed class MainForm : Form
         _lvJobs = new ListView { View=View.Details, FullRowSelect=true, GridLines=true, Height=320, Dock=DockStyle.Top };
         _lvJobs.Columns.Add("Time", 140); _lvJobs.Columns.Add("Name", 320); _lvJobs.Columns.Add("Size", 90); _lvJobs.Columns.Add("Status", 280);
         _btnSendFile = Ui.Button("Send file to server now"); _btnSendFile.Click += (_,_) => SendFileDialog();
-        card.AddRow(Ui.Row(_btnSendFile, Ui.Button("Open data folder", width:0, primary:false)));
-        card.Controls[0].Controls[0].Controls[1].Click += (_,_) => { try { Process.Start(new ProcessStartInfo("explorer.exe", AppPaths.Root){UseShellExecute=true}); } catch{} };
+        var openDataFolder = Ui.Button("Open data folder", width:0, primary:false);
+        openDataFolder.Click += (_,_) => { try { Process.Start(new ProcessStartInfo("explorer.exe", AppPaths.Root){UseShellExecute=true}); } catch{} };
+        card.AddRow(Ui.Row(_btnSendFile, openDataFolder));
         card.AddRow(_lvJobs);
         card.AddRow(Ui.Wrap("Captured print jobs are queued locally and uploaded to the server when approved/connected. Server queues and prints directly to the configured network printer."));
         stack.Add(card);

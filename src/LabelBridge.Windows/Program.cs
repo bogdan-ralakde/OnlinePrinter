@@ -50,7 +50,7 @@ internal static class Cli
     private static int RunGui(string? _)
     {
         var settings = AppSettings.Load();
-        using var mutex = new Mutex(true, @"Local\\OnlinePrinter.Gui.SingleInstance", out bool isNew);
+        using var mutex = new Mutex(true, @"Local\OnlinePrinter.Gui.SingleInstance", out bool isNew);
         if (!isNew)
         {
             MessageBox.Show("Online Printer Client is already running.\n\nLook for the Online Printer Client icon in the notification area (system tray).",

@@ -40,7 +40,7 @@ public static class Log
     public static void Error(string message) => Write(LogLevel.Error, message);
 
     public static void Error(string message, Exception ex) =>
-        Write(LogLevel.Error, message + " :: " + ex.GetType().Name + ": " + ex.Message);
+        Write(LogLevel.Error, message + " :: " + ex);
 
     public static IReadOnlyList<LogLine> Snapshot()
     {

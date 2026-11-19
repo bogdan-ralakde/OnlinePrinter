@@ -373,9 +373,9 @@ internal static class Ui
     {
         return new NumericUpDown
         {
-            Value = Math.Clamp(value, min, max),
             Minimum = min,
             Maximum = max,
+            Value = Math.Clamp(value, min, max),
             Width = width,
             Font = new Font("Segoe UI", 10f),
             BorderStyle = BorderStyle.FixedSingle,
