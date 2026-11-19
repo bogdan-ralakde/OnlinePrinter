@@ -9,7 +9,7 @@
     <AssemblyName>LabelBridge.Relay</AssemblyName>
     <RootNamespace>LabelBridge.Relay</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <PublishSingleFile>false</PublishSingleFile>
   </PropertyGroup>
 

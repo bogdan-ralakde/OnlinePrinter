@@ -12,7 +12,7 @@ namespace LabelBridge.Services;
 /// </summary>
 public sealed class ClientAgent : IAsyncDisposable
 {
-    public const string AppVersion = "1.0.0";
+    public const string AppVersion = "1.1.0";
 
     private readonly AppSettings _settings;
     private readonly JobStore _queue;
@@ -472,22 +472,27 @@ public sealed class ClientAgent : IAsyncDisposable
             }
 
             // Best-effort printer setup/repair when server provides driver hint or profile changed
-            var driverHint = cfg.Profile?.DriverHint ?? cfg.Driver?.DisplayName;
-            if (!string.IsNullOrWhiteSpace(driverHint))
+            var profile = cfg.Profile;
+            var driverHint = profile?.DriverHint ?? cfg.Driver?.DisplayName;
+            var make = profile?.Make ?? "";
+            var model = profile?.Model ?? "";
+            var language = profile?.PrintLanguage ?? "";
+            if (!string.IsNullOrWhiteSpace(driverHint) || !string.IsNullOrWhiteSpace(make) || !string.IsNullOrWhiteSpace(model))
             {
                 try
                 {
                     var catalog = PrinterManager.LoadCatalog(force: true);
                     var installed = catalog.Find(_settings.VirtualPrinterName);
-                    var desired = PrinterManager.PickDriver(catalog, driverHint) ?? driverHint;
+                    var desired = PrinterManager.PickDriver(catalog, driverHint ?? "", make, model, language) ?? driverHint;
                     if (installed == null || (!string.IsNullOrWhiteSpace(installed.Driver) && !string.Equals(installed.Driver, desired, StringComparison.OrdinalIgnoreCase)))
                     {
                         // Attempt install/repair (admin required; may prompt UAC). Do only when changed/missing.
                         if (changedProfile || installed == null)
                         {
-                            var res = PrinterManager.Install(_settings, includeRawPrinter: false, driverOverride: desired);
+                            var res = PrinterManager.Install(_settings, includeRawPrinter: false,
+                                driverOverride: desired, make: make, model: model, language: language, allowAnyDriver: true);
                             Log.Info("Auto printer install/repair: " + (res.Ok ? "OK" : "FAILED") + " - " + res.Output);
-                            if (res.Ok) SetStatus("Virtual printer installed/repaired using server profile.");
+                            if (res.Ok) SetStatus($"Virtual printer installed/repaired: {make} {model} ({desired}).");
                         }
                     }
                 }

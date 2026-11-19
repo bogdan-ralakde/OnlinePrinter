@@ -137,6 +137,7 @@ public sealed class LabelBridgeServer : IDisposable
         if (path == "/api/admin/printer" && method == "PUT") { await ApiSetPrinter(req, res); return; }
         if (path == "/api/admin/printer/test" && method == "POST") { var r = await _printService.SendTestAsync(); await WriteJson(res, r.ok ? 200 : 400, new { ok = r.ok, message = r.message }); return; }
         if (path == "/api/admin/printer/probe" && method == "POST") { await ApiProbePrinter(req, res); return; }
+        if (path == "/api/admin/printer/detect" && method == "POST") { await ApiDetectPrinter(req, res); return; }
         if (path.StartsWith("/api/admin/scan") && method == "GET") { await ApiScan(req, res); return; }
 
         // Clients
@@ -361,6 +362,8 @@ public sealed class LabelBridgeServer : IDisposable
                 if (pr.TryGetProperty("speed", out var sp)) prof.Speed = sp.GetString() ?? prof.Speed;
                 if (pr.TryGetProperty("driverHint", out var dh)) prof.DriverHint = dh.GetString() ?? prof.DriverHint;
                 if (pr.TryGetProperty("printLanguage", out var pl)) prof.PrintLanguage = pl.GetString() ?? prof.PrintLanguage;
+                if (pr.TryGetProperty("make", out var mk)) prof.Make = mk.GetString() ?? prof.Make;
+                if (pr.TryGetProperty("model", out var md)) prof.Model = md.GetString() ?? prof.Model;
                 if (pr.TryGetProperty("extra", out var ex) && ex.ValueKind == JsonValueKind.Object)
                 {
                     prof.Extra ??= new(StringComparer.OrdinalIgnoreCase);
@@ -368,9 +371,36 @@ public sealed class LabelBridgeServer : IDisposable
                 }
             }
             _store.Save();
+
+            // Auto-detect identity when a printer host is configured and profile fields are still blank.
+            if (!string.IsNullOrWhiteSpace(p.Host)) _ = Task.Run(() => AutoDetectConfiguredPrinterAsync(p.Host, p.Port));
+
             await WriteJson(res, 200, new { ok=true, printer=p });
         }
         catch (Exception ex) { await WriteJson(res, 400, new { error=ex.Message }); }
+    }
+
+    /// <summary>Fills only empty identity fields so admin-entered values are never overwritten.</summary>
+    private async Task AutoDetectConfiguredPrinterAsync(string host, int port)
+    {
+        try
+        {
+            var identity = await PrinterIdentityProbe.ProbeAsync(host, port, TimeSpan.FromSeconds(6), _cts?.Token ?? default);
+            if (!identity.Reachable) return;
+            var prof = _store.State.Printer.Profile ??= new PrinterProfile();
+            bool changed = false;
+            if (string.IsNullOrWhiteSpace(prof.Make) && !string.IsNullOrWhiteSpace(identity.Make)) { prof.Make = identity.Make; changed = true; }
+            if (string.IsNullOrWhiteSpace(prof.Model) && !string.IsNullOrWhiteSpace(identity.Model)) { prof.Model = identity.Model; changed = true; }
+            if (string.IsNullOrWhiteSpace(prof.PrintLanguage) && !string.IsNullOrWhiteSpace(identity.PrintLanguage)) { prof.PrintLanguage = identity.PrintLanguage; changed = true; }
+            if (string.IsNullOrWhiteSpace(prof.DriverHint) && !string.IsNullOrWhiteSpace(identity.SuggestedDriverHint)) { prof.DriverHint = identity.SuggestedDriverHint; changed = true; }
+            if (changed)
+            {
+                prof.DetectedUtc = DateTime.UtcNow.ToString("o");
+                _store.Save();
+                Log.Info($"Printer identity detected: {prof.Make} {prof.Model} ({prof.PrintLanguage})");
+            }
+        }
+        catch (Exception ex) { Log.Debug("Printer auto-detect: " + ex.Message); }
     }
 
     private async Task ApiProbePrinter(HttpListenerRequest req, HttpListenerResponse res)
@@ -380,7 +410,63 @@ public sealed class LabelBridgeServer : IDisposable
         var port = body.TryGetProperty("port", out var p)&&p.TryGetInt32(out var pv)?pv:9100;
         if (string.IsNullOrWhiteSpace(host)) { await WriteJson(res, 400, new { ok=false, message="host required" }); return; }
         var r = _printService.TestConnection(host, port);
+        if (r.ok) await AutoDetectConfiguredPrinterAsync(host, port);
         await WriteJson(res, r.ok?200:400, new { ok=r.ok, message=r.message });
+    }
+
+    /// <summary>
+    /// Queries the printer for its identity and fills in make/model/language/driver hint.
+    /// Called from the web UI "Detect printer" button and automatically after Test connection.
+    /// </summary>
+    private async Task ApiDetectPrinter(HttpListenerRequest req, HttpListenerResponse res)
+    {
+        try
+        {
+            var body = await ReadJsonAsync<JsonElement>(req);
+            var host = body.TryGetProperty("host", out var h) ? h.GetString() : _store.State.Printer.Host;
+            var port = body.TryGetProperty("port", out var p) && p.TryGetInt32(out var pv) ? pv : _store.State.Printer.Port;
+            if (port <= 0) port = 9100;
+
+            var identity = await PrinterIdentityProbe.ProbeAsync(host ?? "", port, TimeSpan.FromSeconds(6), _cts?.Token ?? default);
+            if (!identity.Reachable)
+            {
+                await WriteJson(res, 400, new { ok = false, message = "Printer not reachable: " + identity.Error });
+                return;
+            }
+
+            var prof = _store.State.Printer.Profile ??= new PrinterProfile();
+            bool changed = false;
+            void Set(string current, string value, Action<string> assign)
+            {
+                if (string.IsNullOrWhiteSpace(value)) return;
+                if (!string.Equals(current, value, StringComparison.OrdinalIgnoreCase)) { assign(value); changed = true; }
+            }
+            Set(prof.Make, identity.Make, v => prof.Make = v);
+            Set(prof.Model, identity.Model, v => prof.Model = v);
+            Set(prof.PrintLanguage, identity.PrintLanguage, v => prof.PrintLanguage = v);
+            Set(prof.DriverHint, identity.SuggestedDriverHint, v => prof.DriverHint = v);
+            prof.DetectedUtc = DateTime.UtcNow.ToString("o");
+            changed = true;
+
+            // Only persist when detection was invoked against the configured printer.
+            var configured = _store.State.Printer;
+            if (string.Equals(configured.Host, host, StringComparison.OrdinalIgnoreCase) && configured.Port == port && changed)
+                _store.Save();
+
+            var message = string.IsNullOrWhiteSpace(identity.Make) && string.IsNullOrWhiteSpace(identity.Model)
+                ? "Printer answered but did not report make/model. Language: " + identity.PrintLanguage
+                : $"Detected: {identity.Make} {identity.Model} ({identity.PrintLanguage})";
+
+            await WriteJson(res, 200, new
+            {
+                ok = true,
+                message,
+                identity,
+                profile = prof,
+                printer = configured
+            });
+        }
+        catch (Exception ex) { await WriteJson(res, 400, new { ok = false, message = ex.Message }); }
     }
 
     private async Task ApiScan(HttpListenerRequest req, HttpListenerResponse res)

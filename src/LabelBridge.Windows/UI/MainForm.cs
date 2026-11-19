@@ -336,6 +336,9 @@ internal sealed class MainForm : Form
         var profileParts = new List<string>();
         void add(string label, string? v) { if (!string.IsNullOrWhiteSpace(v)) profileParts.Add($"{label}: {v}"); }
         add("Profile", cfg.Profile.Name);
+        add("Make", cfg.Profile.Make);
+        add("Model", cfg.Profile.Model);
+        if (!string.IsNullOrWhiteSpace(cfg.Profile.DetectedUtc)) add("Detected", cfg.Profile.DetectedUtc);
         var size = string.Join(" x ", new[] { cfg.Profile.Width, cfg.Profile.Height }.Where(s => !string.IsNullOrWhiteSpace(s)));
         add("Size", size);
         add("DPI", cfg.Profile.Dpi);
@@ -380,12 +383,17 @@ internal sealed class MainForm : Form
         _settings.Save();
     }
 
+    private ServerPrinterProfile cfgProfile() =>
+        _lastConfig?.Profile ?? new ServerPrinterProfile();
+
     private void InstallOrRepairPrinter()
     {
         PersistSettingsFromUi();
         try
         {
-            var res = PrinterManager.Install(_settings, includeRawPrinter:false, driverOverride: _cmbDriver.Text);
+            var p = cfgProfile();
+            var res = PrinterManager.Install(_settings, includeRawPrinter:false, driverOverride: _cmbDriver.Text,
+                make: p.Make, model: p.Model, language: p.PrintLanguage, allowAnyDriver: true);
             AppendLog(res.Output);
             if (res.Ok) Ui.Info(this, res.Output.Length>0?res.Output:"Printer installed."); else Ui.Error(this, res.Output.Length>0?res.Output:"Printer install failed.");
             RefreshDriverList();

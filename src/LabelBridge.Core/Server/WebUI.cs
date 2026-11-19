@@ -128,7 +128,7 @@ function pill(status){const s=(status||'').toLowerCase(); const cls=s==='approve
 
 async function loadDash(){ const [p,clients,jobs,upd] = await Promise.all([api('/api/admin/printer'), api('/api/admin/clients'), api('/api/admin/jobs'), api('/api/admin/update-info').catch(()=>({}))]);
   const pending=clients.filter(c=>c.Status==='Pending').length; const approved=clients.filter(c=>c.Status==='Approved').length;
-  const prof=[p.Profile?.Width,p.Profile?.Height,p.Profile?.Dpi&& (p.Profile.Dpi+'dpi'),p.Profile?.Orientation,p.Profile?.PrintLanguage].filter(Boolean).join(' · ');
+  const prof=[p.Profile?.Make,p.Profile?.Model,p.Profile?.Width,p.Profile?.Height,p.Profile?.Dpi&& (p.Profile.Dpi+'dpi'),p.Profile?.Orientation,p.Profile?.PrintLanguage].filter(Boolean).join(' · ');
   document.getElementById('tab-dashboard').innerHTML=`
   <div class="grid">
     <div class="card"><h2>Server</h2><div class="muted small">Version ${esc(upd.current||'')}</div><div style="margin-top:8px">${upd.hasUpdate?`<span class="pill pending">Update available: ${esc(upd.latest||'')}</span>`:`<span class="pill ok">${upd.ok===false?'Update check unavailable':'Up to date'}</span>`}</div><div class="small muted" style="margin-top:8px">${esc(upd.url||'')}</div></div>
@@ -146,6 +146,9 @@ async function loadPrinter(){ const p=await api('/api/admin/printer'); const pr=
       <div class="two"><div><label>Host / IP</label><input id="pHost" value="${esc(p.Host||'')}"></div><div><label>Port</label><input id="pPort" type="number" value="${esc(p.Port||9100)}"></div></div>
       <label><input type="checkbox" id="pEnabled" ${p.Enabled!==false?'checked':''}> Enabled</label>
       <h2 style="margin-top:14px">Label/profile (pushed to clients)</h2>
+      <div class="small muted" style="margin-bottom:8px">Make/model and print language are detected from the printer automatically when you save or test the connection. Clients use them to pick the matching Windows driver.</div>
+      <div class="two"><div><label>Make (detected)</label><input id="pfMake" value="${esc(pr.Make||'')}" placeholder="e.g. Zebra, TSC"></div><div><label>Model (detected)</label><input id="pfModel" value="${esc(pr.Model||'')}" placeholder="e.g. ZD421"></div></div>
+      ${pr.DetectedUtc?`<div class="small muted">Last detected: ${esc(pr.DetectedUtc)}</div>`:''}
       <label>Profile name</label><input id="pfName" value="${esc(pr.Name||'Default')}">
       <div class="two"><div><label>Width (e.g. 4in, 100mm)</label><input id="pW" value="${esc(pr.Width||'')}"></div><div><label>Height (e.g. 6in, 150mm)</label><input id="pH" value="${esc(pr.Height||'')}"></div></div>
       <div class="two"><div><label>DPI (e.g. 203, 300)</label><input id="pDpi" value="${esc(pr.Dpi||'')}"></div><div><label>Orientation</label><input id="pOri" value="${esc(pr.Orientation||'')}" placeholder="portrait / landscape"></div></div>
@@ -153,7 +156,7 @@ async function loadPrinter(){ const p=await api('/api/admin/printer'); const pr=
       <div class="two"><div><label>Darkness</label><input id="pDark" value="${esc(pr.Darkness||'')}"></div><div><label>Speed</label><input id="pSpeed" value="${esc(pr.Speed||'')}"></div></div>
       <label>Print language</label><input id="pLang" value="${esc(pr.PrintLanguage||'')}" placeholder="ZPL, EPL, CPCL, TSPL, ESC/POS, RAW, etc.">
       <label>Driver hint (exact Windows driver/model name for virtual printer)</label><input id="pDrv" value="${esc(pr.DriverHint||'')}" placeholder="e.g. ZDesigner ZD420-300dpi ZPL, Generic / Text Only, etc.">
-      <div class="row" style="margin-top:12px"><button class="primary" onclick="savePrinter()">Save</button><button onclick="probePrinter()">Test connection</button><button onclick="sendTest()">Send test label</button></div>
+      <div class="row" style="margin-top:12px"><button class="primary" onclick="savePrinter()">Save</button><button onclick="detectPrinter()">Detect printer</button><button onclick="probePrinter()">Test connection</button><button onclick="sendTest()">Send test label</button></div>
       <div id="pMsg" class="small muted" style="margin-top:8px"></div>
     </div>
     <div class="card"><h2>Auto-scan (TCP port)</h2>
@@ -166,8 +169,9 @@ async function loadPrinter(){ const p=await api('/api/admin/printer'); const pr=
 }
 
 async function savePrinter(){ try{ const body={name:v('pName'),host:v('pHost'),port:parseInt(v('pPort')||'9100'),enabled:document.getElementById('pEnabled').checked,
-  profile:{name:v('pfName'),width:v('pW'),height:v('pH'),dpi:v('pDpi'),orientation:v('pOri'),mediaType:v('pMedia'),printMethod:v('pMethod'),darkness:v('pDark'),speed:v('pSpeed'),printLanguage:v('pLang'),driverHint:v('pDrv')}}; 
+  profile:{name:v('pfName'),make:v('pfMake'),model:v('pfModel'),width:v('pW'),height:v('pH'),dpi:v('pDpi'),orientation:v('pOri'),mediaType:v('pMedia'),printMethod:v('pMethod'),darkness:v('pDark'),speed:v('pSpeed'),printLanguage:v('pLang'),driverHint:v('pDrv')}}; 
   await api('/api/admin/printer',{method:'PUT',body}); msg('Printer/profile saved. Approved clients will receive the updated profile.'); document.getElementById('pMsg').textContent='Saved.';}catch(e){msg(e.message,true)} }
+async function detectPrinter(){ try{ const r=await api('/api/admin/printer/detect',{method:'POST',body:{host:v('pHost'),port:parseInt(v('pPort')||'9100')}}); document.getElementById('pMsg').textContent=r.message; if(r.profile){ if(document.getElementById('pfMake'))document.getElementById('pfMake').value=r.profile.Make||''; if(document.getElementById('pfModel'))document.getElementById('pfModel').value=r.profile.Model||''; if(document.getElementById('pLang'))document.getElementById('pLang').value=r.profile.PrintLanguage||''; if(document.getElementById('pDrv'))document.getElementById('pDrv').value=r.profile.DriverHint||''; } msg(r.message); await loadPrinter(); }catch(e){document.getElementById('pMsg').textContent=e.message; msg(e.message,true)} }
 async function probePrinter(){ try{ const r=await api('/api/admin/printer/probe',{method:'POST',body:{host:v('pHost'),port:parseInt(v('pPort')||'9100')}}); document.getElementById('pMsg').textContent=r.message; msg(r.message);}catch(e){document.getElementById('pMsg').textContent=e.message; msg(e.message,true)} }
 async function sendTest(){ try{ const r=await api('/api/admin/printer/test',{method:'POST'}); document.getElementById('pMsg').textContent=r.message; msg(r.message);}catch(e){document.getElementById('pMsg').textContent=e.message; msg(e.message,true)} }
 async function scanNet(){ try{ document.getElementById('scanOut').textContent='Scanning...'; const s=encodeURIComponent(v('scanSubnet')||''); const port=parseInt(v('scanPort')||v('pPort')||'9100'); const r=await api('/api/admin/scan?subnet='+s+'&port='+port); if(!r.results||!r.results.length){document.getElementById('scanOut').innerHTML='No open printers found on port '+esc(port)+'.'; return;} document.getElementById('scanOut').innerHTML='<table><tr><th>Host</th><th>Port</th><th></th></tr>'+r.results.map(x=>`<tr><td>${esc(x.host)}</td><td>${esc(x.port)}</td><td><button onclick="useHost('${esc(x.host)}',${x.port})">Use</button></td></tr>`).join('')+'</table>'; }catch(e){document.getElementById('scanOut').textContent=e.message;} }

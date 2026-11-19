@@ -15,7 +15,7 @@ public sealed class ServerConfig
     public int MaxPayloadBytes { get; set; } = 128 * 1024 * 1024;
     public int RetentionHours { get; set; } = 168;
     public string Repo { get; set; } = "bogdan-ralakde/OnlinePrinter";
-    public string CurrentVersion { get; set; } = "1.0.0";
+    public string CurrentVersion { get; set; } = "1.1.0";
 }
 
 public sealed class AdminRecord
@@ -55,6 +55,9 @@ public sealed class PrinterProfile
     public string Speed { get; set; } = "";
     public string DriverHint { get; set; } = ""; // exact Windows driver name/model hint for virtual printer
     public string PrintLanguage { get; set; } = ""; // e.g. ZPL, EPL, CPCL, TSPL, ESC/POS, PDF, RAW
+    public string Make { get; set; } = ""; // detected printer manufacturer (e.g. Zebra, TSC, Dymo)
+    public string Model { get; set; } = ""; // detected printer model (e.g. ZD421, TE244)
+    public string DetectedUtc { get; set; } = ""; // when identity was last detected from the device
     public Dictionary<string, string> Extra { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 

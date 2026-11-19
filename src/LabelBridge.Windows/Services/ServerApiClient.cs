@@ -18,6 +18,9 @@ public sealed class ServerPrinterProfile
     public string Speed { get; set; } = "";
     public string DriverHint { get; set; } = "";
     public string PrintLanguage { get; set; } = "";
+    public string Make { get; set; } = "";
+    public string Model { get; set; } = "";
+    public string DetectedUtc { get; set; } = "";
 }
 
 public sealed class ServerDriverInfo
@@ -131,6 +134,9 @@ public sealed class ServerApiClient : IDisposable
                     Speed = Str(pr, "Speed", "speed") ?? "",
                     DriverHint = Str(pr, "DriverHint", "driverHint") ?? "",
                     PrintLanguage = Str(pr, "PrintLanguage", "printLanguage") ?? "",
+                    Make = Str(pr, "Make", "make") ?? "",
+                    Model = Str(pr, "Model", "model") ?? "",
+                    DetectedUtc = Str(pr, "DetectedUtc", "detectedUtc") ?? "",
                 };
             }
         }

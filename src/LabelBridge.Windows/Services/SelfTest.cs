@@ -28,6 +28,7 @@ internal static class SelfTest
             TestServerStoreAndApproval(root);
             TestServerPrintQueuePolicy(root).GetAwaiter().GetResult();
             TestTestLabelGeneration(root);
+            TestPrinterIdentityDetection().GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {
@@ -183,6 +184,48 @@ internal static class SelfTest
             Pass("test label generation per print language");
         }
         catch (Exception ex) { Fail("test label generation: " + ex.Message); }
+    }
+
+    private static async Task TestPrinterIdentityDetection()
+    {
+        try
+        {
+            // Simulated printer: answers the ZPL host-identification query.
+            var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            listener.Start();
+            int port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+            var server = Task.Run(async () =>
+            {
+                try
+                {
+                    using var client = await listener.AcceptTcpClientAsync();
+                    using var stream = client.GetStream();
+                    var buf = new byte[256];
+                    while (true)
+                    {
+                        int n = await stream.ReadAsync(buf);
+                        if (n <= 0) break;
+                        var cmd = System.Text.Encoding.ASCII.GetString(buf, 0, n);
+                        if (cmd.Contains("~HI"))
+                        {
+                            var reply = System.Text.Encoding.ASCII.GetBytes("Zebra Technologies ZTC ZD421-300dpi ZPL\n");
+                            await stream.WriteAsync(reply);
+                        }
+                    }
+                }
+                catch { }
+            });
+
+            var result = await PrinterIdentityProbe.ProbeAsync("127.0.0.1", port, TimeSpan.FromSeconds(3));
+            Expect(result.Reachable, "printer identity probe reachable");
+            Expect(result.Make.Equals("Zebra", StringComparison.OrdinalIgnoreCase), "detected make: " + result.Make);
+            Expect(result.Model.Contains("ZD421", StringComparison.OrdinalIgnoreCase), "detected model: " + result.Model);
+            Expect(result.PrintLanguage.Equals("ZPL", StringComparison.OrdinalIgnoreCase), "detected language: " + result.PrintLanguage);
+            Expect(!string.IsNullOrWhiteSpace(result.SuggestedDriverHint), "suggested driver hint present");
+            listener.Stop();
+            Pass("printer identity detection (make/model/language/driver hint)");
+        }
+        catch (Exception ex) { Fail("printer identity detection: " + ex.Message); }
     }
 
     private static void Expect(bool condition, string message)

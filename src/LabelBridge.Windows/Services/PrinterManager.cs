@@ -104,18 +104,43 @@ $ports    = @(Get-PrinterPort | Where-Object { $_.PrinterHostAddress } | ForEach
         return catalog;
     }
 
-    /// <summary>Best installed ZDesigner ZPL driver, preferring the requested one.</summary>
-    public static string? PickDriver(PrinterCatalog catalog, string preferred)
+    /// <summary>
+    /// Picks the best installed Windows driver for the server-provided identity.
+    /// Preference order: exact name, model token, make token, then language-specific
+    /// fallback, then Generic / Text Only.
+    /// </summary>
+    public static string? PickDriver(PrinterCatalog catalog, string preferred, string? make = null, string? model = null, string? language = null)
     {
-        if (catalog.Drivers.Any(d => d.Equals(preferred, StringComparison.OrdinalIgnoreCase)))
+        if (!string.IsNullOrWhiteSpace(preferred) &&
+            catalog.Drivers.Any(d => d.Equals(preferred, StringComparison.OrdinalIgnoreCase)))
             return catalog.Drivers.First(d => d.Equals(preferred, StringComparison.OrdinalIgnoreCase));
+
+        var tokens = new List<string>();
+        if (!string.IsNullOrWhiteSpace(model)) tokens.Add(model.Trim());
+        if (!string.IsNullOrWhiteSpace(make)) tokens.Add(make.Trim());
+        if (!string.IsNullOrWhiteSpace(preferred))
+            tokens.AddRange(preferred.Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries));
+
+        foreach (var token in tokens.Where(t => t.Length >= 2).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var match = catalog.Drivers.FirstOrDefault(d => d.Contains(token, StringComparison.OrdinalIgnoreCase));
+            if (match != null) return match;
+        }
+
+        if (!string.IsNullOrWhiteSpace(language))
+        {
+            var lang = language.Trim().ToUpperInvariant();
+            var byLang = catalog.Drivers.FirstOrDefault(d =>
+                d.Contains(lang, StringComparison.OrdinalIgnoreCase) ||
+                (lang == "ZPL" && d.Contains("ZDesigner", StringComparison.OrdinalIgnoreCase)));
+            if (byLang != null) return byLang;
+        }
 
         var zebra = catalog.Drivers
             .Where(d => d.Contains("ZDesigner", StringComparison.OrdinalIgnoreCase) &&
                         d.Contains("ZPL", StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(d => d.Contains("300", StringComparison.OrdinalIgnoreCase))
             .ToList();
-
         if (zebra.Count > 0) return zebra[0];
 
         return catalog.Drivers.FirstOrDefault(d => d.Equals("Generic / Text Only", StringComparison.OrdinalIgnoreCase));
@@ -133,17 +158,23 @@ $ports    = @(Get-PrinterPort | Where-Object { $_.PrinterHostAddress } | ForEach
         catch { return false; }
     }
 
-    public static CommandResult Install(AppSettings settings, bool includeRawPrinter, string? driverOverride = null)
+    public static CommandResult Install(AppSettings settings, bool includeRawPrinter, string? driverOverride = null,
+        string? make = null, string? model = null, string? language = null, bool allowAnyDriver = false)
     {
         var catalog = LoadCatalog(force: true);
-        var driver = driverOverride ?? PickDriver(catalog, settings.VirtualPrinterDriver);
+        var driver = !string.IsNullOrWhiteSpace(driverOverride)
+            ? driverOverride
+            : PickDriver(catalog, settings.VirtualPrinterDriver, make, model, language);
 
         if (string.IsNullOrWhiteSpace(driver))
             return new CommandResult(false, 1,
-                "No suitable printer driver found.\r\n\r\nInstall the Zebra ZDesigner driver for your printer model " +
-                "(ZPL version), then try again.\r\n" + ZebraDownloadUrl);
+                "No suitable printer driver found.\r\n\r\nInstall the driver for your printer model " +
+                "(from the server's Drivers page or the vendor), then try again.\r\n" + ZebraDownloadUrl);
 
-        if (!driver.Contains("ZPL", StringComparison.OrdinalIgnoreCase) &&
+        // Manual installs stay conservative (ZPL/Generic). Server-provisioned installs
+        // trust the make/model/driver supplied by the admin, so any matching driver is allowed.
+        if (!allowAnyDriver &&
+            !driver.Contains("ZPL", StringComparison.OrdinalIgnoreCase) &&
             !driver.EqualNoCase("Generic / Text Only"))
             return new CommandResult(false, 1,
                 $"Driver '{driver}' is not a ZPL driver. Choose a 'ZDesigner ... ZPL' driver so labels are rendered correctly.");

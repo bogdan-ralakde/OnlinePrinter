@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -64,7 +64,7 @@ internal static class Program
             using (var fs = new FileStream(target, FileMode.Create, FileAccess.Write, FileShare.None))
                 payload.CopyTo(fs);
 
-            var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
+            var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.1.0";
             File.WriteAllText(Path.Combine(dir, "VERSION.txt"), AppName + " " + version + Environment.NewLine);
 
             // Keep the setup next to the app so Apps & features / Add or remove programs keeps working.
