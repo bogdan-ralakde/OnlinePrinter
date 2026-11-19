@@ -119,16 +119,19 @@ public sealed class LoopbackCapture : IDisposable
                 var kind = PrinterData.Classify(data);
                 if (!PrinterData.IsForwardable(kind))
                 {
-                    Log.Error($"Spooled data is {PrinterData.Describe(kind)}, not printer language. " +
-                              "Check that the LabelBridge printer uses the ZDesigner ZPL driver.");
-                    throw new InvalidOperationException(
-                        $"The virtual printer produced {PrinterData.Describe(kind)} instead of ZPL. " +
-                        "Open LabelBridge > Virtual printer and make sure the ZDesigner ZPL driver is selected.");
+                    var reason = PrinterData.RejectReason(kind);
+                    Log.Error($"Rejected captured print job ({PrinterData.Describe(kind)}, {data.Length:N0} bytes): {reason}");
+                    throw new InvalidOperationException(reason);
+                }
+
+                if (!PrinterData.IsDirectPrinterRawFriendly(kind))
+                {
+                    Log.Warn($"Captured {PrinterData.Describe(kind)} ({data.Length:N0} bytes). Printer/profile compatibility is required for direct raw printing.");
                 }
 
                 var job = new PrintJob
                 {
-                    Name = $"Spool {DateTime.Now:HH:mm:ss}",
+                    Name = $"Spool {DateTime.Now:HH:mm:ss} ({PrinterData.Describe(kind)})",
                     Source = "virtual printer",
                     Data = data
                 };

@@ -1,6 +1,6 @@
 #!/bin/sh
-# Small safety net for container operators: the relay needs a writable data
-# directory, and silently losing it would mean losing queued labels.
+# Small safety net for container operators: the server needs a writable data
+# directory for config, queue, drivers and jobs.
 set -e
 
 DATA_DIR="${LB_DATA:-/data}"
@@ -16,7 +16,7 @@ if [ ! -w "$DATA_DIR" ]; then
     exit 1
 fi
 
-# A named volume keeps its contents across upgrades; make sure the layout exists.
-mkdir -p "$DATA_DIR/channels"
+# Ensure common subdirs exist (harmless on existing installs).
+mkdir -p "$DATA_DIR/queue" "$DATA_DIR/drivers" "$DATA_DIR/jobs"
 
 exec "$@"

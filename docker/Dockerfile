@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+﻿# syntax=docker/dockerfile:1
 
 # -------------------------------------------------------------------- build
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
@@ -33,8 +33,8 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 ENV LB_LISTEN="http://+:8080/" \
     LB_DATA="/data" \
     LB_RETENTION_HOURS="168" \
-    LB_MAX_MB="64" \
-    LB_MAX_JOBS="1000" \
+    LB_MAX_MB="128" \
+    LB_MAX_JOBS="2000" \
     DOTNET_gcServer="true" \
     DOTNET_TieredPGO="true"
 
@@ -48,3 +48,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["dotnet", "/app/LabelBridge.Relay.dll"]
+
+

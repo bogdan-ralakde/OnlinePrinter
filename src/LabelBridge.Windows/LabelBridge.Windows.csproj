@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -14,7 +14,7 @@
     <FileVersion>1.0.0.0</FileVersion>
     <Company>LabelBridge</Company>
     <Product>LabelBridge</Product>
-    <Description>Virtual label printer bridge - forwards Windows print jobs to a remote label printer.</Description>
+    <Description>LabelBridge Windows client - virtual printer that uploads jobs to LabelBridge server for direct printing.</Description>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationVisualStyles>true</ApplicationVisualStyles>
     <ApplicationUseCompatibleTextRendering>false</ApplicationUseCompatibleTextRendering>

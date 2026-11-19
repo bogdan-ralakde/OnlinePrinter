@@ -250,17 +250,17 @@ if (-not $NoLaunch) {
 
 # ------------------------------------------------------------------ summary
 Write-Host ''
-Write-Host 'LabelBridge is installed.' -ForegroundColor Green
+Write-Host 'LabelBridge client is installed.' -ForegroundColor Green
 Write-Host ''
 Write-Host '  App        : ' -NoNewline; Write-Host $targetExe -ForegroundColor White
 Write-Host '  Settings   : ' -NoNewline; Write-Host (Join-Path $dataDir 'settings.json') -ForegroundColor White
 Write-Host '  Virtual pr.: ' -NoNewline
 if ($printerOk) { Write-Host 'installed' -ForegroundColor Green } else { Write-Host 'not installed yet (Printer tab)' -ForegroundColor Yellow }
 Write-Host ''
-Write-Host '  First run:'
-Write-Host '    1. choose Host on the PC connected to the label printer'
-Write-Host '    2. create a relay channel (or use direct TLS / Tailscale)'
-Write-Host '    3. send the pairing code to the remote users'
-Write-Host '    4. on remote PCs choose Client and paste the pairing code'
+Write-Host '  First run (Option A):'
+Write-Host '    1. Open LabelBridge and set the LabelBridge server URL (web UI/API base URL)'
+Write-Host '    2. Submit a connection request and wait for admin approval in the server web UI'
+Write-Host '    3. Download/install the server-provided driver/profile if required, then install/repair the local "LabelBridge" virtual printer (admin)'
+Write-Host '    4. Print from any app to "LabelBridge" - jobs upload to the server and print directly to the configured network printer'
 Write-Host ''
 if (-not $Quiet) { Read-Host 'Press Enter to close' | Out-Null }

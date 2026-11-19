@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# LabelBridge server installer for Linux (LXC / VM / bare metal, systemd).
+# LabelBridge all-in-one server installer for Linux (LXC / VM / bare metal, systemd).
 #
 # Installs LabelBridge as a systemd service. If a local binary/bundle is not
 # provided or found next to this script, it automatically downloads the latest
@@ -23,10 +23,9 @@
 #   LABELBRIDGE_VERSION  Release tag or "latest" (default: latest)
 #   LABELBRIDGE_ASSET    Asset filename (default: labelbridge-relay-linux-x64.tar.gz)
 #
-# Current release contents: relay service + HTTP API + /health + basic status page.
-# Full admin web UI and server-side printer discovery/direct-print (LXC handles
-# everything, no Windows host) are planned; future releases will ship via this
-# same installer.
+# Server provides: web UI + admin auth, client approval, printer config/scan/test,
+# direct TCP/9100 printing, durable job queue, and driver/profile hosting APIs.
+# Binary/service names are kept for upgrade compatibility.
 
 set -euo pipefail
 
@@ -106,7 +105,16 @@ fetch() {
 find_local_binary() {
   local arg="${1:-}"; local c
   local candidates=()
-  [[ -n "$arg" ]] && candidates+=("$arg")
+  if [[ -n "$arg" ]]; then
+    if [[ -d "$arg" ]]; then
+      candidates+=("$arg/$BIN_NAME" "$arg/bin/$BIN_NAME")
+      local found_in_dir
+      found_in_dir="$(find "$arg" -maxdepth 3 -type f -name "$BIN_NAME" 2>/dev/null | head -n1 || true)"
+      [[ -n "$found_in_dir" ]] && candidates+=("$found_in_dir")
+    else
+      candidates+=("$arg")
+    fi
+  fi
   [[ -n "$SCRIPT_DIR" ]] && candidates+=("$SCRIPT_DIR/$BIN_NAME" "$SCRIPT_DIR/../dist/relay-linux-x64/$BIN_NAME" "$SCRIPT_DIR/../$BIN_NAME")
   candidates+=("$PWD/$BIN_NAME" "./$BIN_NAME")
   for c in "${candidates[@]}"; do
@@ -189,7 +197,7 @@ install_main() {
   systemctl is-active --quiet "$APP_NAME" 2>/dev/null && { info "Stopping running service"; systemctl stop "$APP_NAME"; }
 
   install -d -m 0755 "$INSTALL_DIR" "$CONFIG_DIR"
-  install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$DATA_DIR" "$DATA_DIR/channels"
+  install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0750 "$DATA_DIR"
   install -m 0755 "$src_bin" "$INSTALL_DIR/$BIN_NAME"
   ok "Binary installed"
 
@@ -200,13 +208,15 @@ install_main() {
   else
     admin_secret="${LB_ADMIN_SECRET:-$(rand_secret)}"
     cat > "$ENV_FILE" <<EOF
-# LabelBridge configuration
+# LabelBridge server configuration
+# LB_ADMIN_SECRET is used as the initial admin password on first setup (if no admin account exists yet).
 LB_LISTEN=http://+:8080/
 LB_DATA=${DATA_DIR}
 LB_ADMIN_SECRET=${admin_secret}
 LB_RETENTION_HOURS=168
-LB_MAX_MB=64
-LB_MAX_JOBS=1000
+LB_MAX_MB=128
+LB_MAX_JOBS=2000
+LB_REPO=${REPO}
 EOF
     chmod 0640 "$ENV_FILE"; chown "root:${SERVICE_GROUP}" "$ENV_FILE" 2>/dev/null || true
     ok "Created config $ENV_FILE"
@@ -249,17 +259,21 @@ EOF
   ip="$(detect_ip)"; listen_port="$(get_env_value "LB_LISTEN" "$ENV_FILE")"; [[ -n "$listen_port" ]] || listen_port="http://+:8080/"
 
   echo
-  echo -e "${GREEN}LabelBridge installed.${NC}"
+  echo -e "${GREEN}LabelBridge server installed.${NC}"
   echo "  Service : $APP_NAME ($(systemctl is-active "$APP_NAME" 2>/dev/null || echo unknown))"
   echo "  Config  : $ENV_FILE"
   echo "  Data    : $DATA_DIR"
   echo "  Listen  : $listen_port"
-  echo "  URL     : http://${ip}:8080/   (health: /health)"
-  [[ "$health_ok" == "true" ]] && echo -e "  Health  : ${GREEN}OK${NC}" || warn "Health not ready yet: journalctl -u $APP_NAME -n 50 --no-pager"
-  [[ -n "$admin_secret" ]] && echo "  Admin secret: $admin_secret  (LB_ADMIN_SECRET in $ENV_FILE)"
+  echo "  Web UI  : http://${ip}:8080/   (login as admin)"
+  echo "  Health  : http://${ip}:8080/health"
+  [[ "$health_ok" == "true" ]] && echo -e "  Status  : ${GREEN}OK${NC}" || warn "Health not ready yet: journalctl -u $APP_NAME -n 80 --no-pager"
+  if [[ -n "$admin_secret" ]]; then
+    echo "  Initial admin password: $admin_secret"
+    echo "  (saved as LB_ADMIN_SECRET in $ENV_FILE; used for first admin login/setup if needed)"
+  fi
   echo
   echo "Manage: systemctl status $APP_NAME | journalctl -u $APP_NAME -f"
-  echo "Tip: for internet use, put HTTPS reverse proxy in front (no buffering, read timeout >= 120s)."
+  echo "Tip: for internet use, put HTTPS reverse proxy in front of the web UI/API."
 }
 
 main() {

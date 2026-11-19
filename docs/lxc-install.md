@@ -1,41 +1,45 @@
-# LXC / Linux installation (LabelBridge relay)
+# LXC / Linux installation (LabelBridge all-in-one server)
 
-This installs the **LabelBridge relay** on a Linux host (Proxmox LXC, Incus/LXD, Debian/Ubuntu VM, etc.) as a `systemd` service.
+This installs the **LabelBridge server** on a Linux host (Proxmox LXC, Incus/LXD, Debian/Ubuntu VM, etc.) as a `systemd` service. The server is intended to run on the same LAN as the network printer (and can be exposed over the internet behind HTTPS for client access).
 
-## What gets installed (current build)
+## What gets installed
 
-- Self-contained `LabelBridge.Relay` binary in `/opt/labelbridge` (no .NET runtime required)
-- Systemd service: `labelbridge-relay.service` (runs as unprivileged user `labelbridge`)
-- Config: `/etc/labelbridge/relay.env` (listen address, data dir, admin secret, limits)
-- Data: `/var/lib/labelbridge` (channels and queued jobs, persisted)
+- Self-contained `LabelBridge.Relay` binary in `/opt/labelbridge` (kept name for upgrade/install compatibility)
+- Systemd service: `labelbridge-relay` (runs as unprivileged user `labelbridge`)
+- Config: `/etc/labelbridge/relay.env` (listen address, data dir, initial admin secret, limits)
+- Data: `/var/lib/labelbridge` (server state, queue, uploaded drivers, jobs)
 
-**Exposed by this build:** HTTP relay API, `GET /health`, and a basic status page at `/`.
+**Provided by this build:** web UI + admin authentication, printer configuration (manual IP:port), TCP/9100 subnet scan/test/print, client registration with admin approve/decline/revoke, durable job queue and direct printing to the configured network printer, driver/profile hosting APIs for clients, and basic update info endpoint. `GET /health` remains available for checks.
 
-**Not yet included:** a full admin web UI and server-side printer discovery/selection. Today, printer selection/host configuration is done in the Windows LabelBridge app (Host/Client). See **Architecture note** below.
-
-## Quick install
-
-1. Copy the relay payload to the LXC, e.g. the contents of `dist/relay-linux-x64/` (must include `LabelBridge.Relay` and `install-lxc.sh`).
-2. Run the installer as root:
+## Quick install (latest release)
 
 ```bash
-cd /path/to/relay-linux-x64
-sudo bash install-lxc.sh
-# or, from a repo checkout:
-# sudo bash scripts/install-lxc.sh
+curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-lxc.sh | sudo bash
 ```
 
-3. Check status:
+Install a specific release:
 
 ```bash
-systemctl status labelbridge-relay
-curl -s http://127.0.0.1:8080/health
-# -> ok channels=0 jobs=0 uptime=...
+curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-lxc.sh | sudo LABELBRIDGE_VERSION=v1.0.0 bash
 ```
 
-Open the basic status page from your network: `http://<lxc-ip>:8080/`
+Local/bundle install:
 
-The installer prints the **admin secret** (also stored as `LB_ADMIN_SECRET` in `/etc/labelbridge/relay.env`). You need it to create a printer channel from the Windows host app.
+```bash
+sudo bash scripts/install-lxc.sh
+# or
+sudo bash scripts/install-lxc.sh --local /path/to/relay-linux-x64
+```
+
+## First run
+
+1. Check service: `systemctl status labelbridge-relay` and `curl -s http://127.0.0.1:8080/health`
+2. Open web UI: `http://<server-ip>:8080/`
+3. Login as `admin`.
+   - `LB_ADMIN_SECRET` in `/etc/labelbridge/relay.env` is used as the **initial admin password** on first setup (installer generates and prints it). Change it in **Settings** after login.
+4. Configure printer in **Printer** tab (e.g. `192.168.50.25:9100`, profile like Zebra ZD420 300dpi ZPL as applicable), run **Test connection** / **Send test label**, and/or use **Scan**.
+5. (Optional) Upload/select a Windows driver/installer package in **Drivers** so approved clients can download it.
+6. Install/run LabelBridge Windows client, set server URL, submit connection request, approve in **Clients**, then install/repair the local "LabelBridge" virtual printer and print.
 
 ## Configure (environment file)
 
@@ -46,64 +50,46 @@ sudo nano /etc/labelbridge/relay.env
 sudo systemctl restart labelbridge-relay
 ```
 
-Important variables:
-
 | Variable | Default | Meaning |
 |---|---|---|
-| `LB_LISTEN` | `http://+:8080/` | HTTP listener (put TLS/reverse proxy in front for internet) |
-| `LB_DATA` | `/var/lib/labelbridge` | Persistent storage (channels, queued jobs) |
-| `LB_ADMIN_SECRET` | *(generated)* | Required in `X-LB-Admin` when creating channels |
-| `LB_RETENTION_HOURS` | `168` | Delete unclaimed jobs after N hours |
-| `LB_MAX_MB` | `64` | Max single job size (MB) |
-| `LB_MAX_JOBS` | `1000` | Max queued jobs per channel |
+| `LB_LISTEN` | `http://+:8080/` | HTTP listener (web UI + API) |
+| `LB_DATA` | `/var/lib/labelbridge` | Persistent storage (state, queue, drivers, jobs) |
+| `LB_ADMIN_SECRET` | *(generated)* | Initial admin password for first setup/login |
+| `LB_RETENTION_HOURS` | `168` | Retention window (hours) |
+| `LB_MAX_MB` | `128` | Max upload/job size (MB) |
+| `LB_MAX_JOBS` | `2000` | Max queued jobs |
+| `LB_REPO` | `bogdan-ralakde/OnlinePrinter` | Repo used for update checks/info |
 
 ## HTTPS / reverse proxy (recommended for internet use)
 
-Do **not** expose the relay over plain HTTP on the public internet (tokens and label payloads would be unencrypted). Terminate TLS in front (Caddy/nginx/Traefik/Cloudflare Tunnel) and proxy to `http://127.0.0.1:8080`.
-
-Long-polling requirements (host polls with `wait=25`):
-- disable response buffering for `/api/` (nginx `proxy_buffering off;`, Caddy `flush_interval -1`)
-- allow read timeout **>= 120s**
-- allow request body >= `LB_MAX_MB`
+Do not expose plain HTTP publicly if clients connect over the internet (credentials/tokens/job data). Put TLS reverse proxy in front (Caddy/nginx/Traefik/Cloudflare Tunnel) and proxy to `http://127.0.0.1:8080`.
 
 Example (Caddy):
 
 ```caddyfile
 print.example.com {
-    reverse_proxy 127.0.0.1:8080 {
-        flush_interval -1
-        transport http { read_timeout 120s }
-    }
+    reverse_proxy 127.0.0.1:8080
 }
 ```
 
-More examples: `docs/relay-truenas.md`.
-
-## Connect Windows host/client
-
-1. **Printer-side Windows PC (Host):** install/run LabelBridge → Connection tab → set Relay URL (`https://print.example.com` or `http://<lxc-ip>:8080` on a trusted LAN) + admin secret → **Create channel** → copy pairing code.
-2. **Remote Windows PC (Client):** install/run LabelBridge → paste pairing code → print to the virtual "LabelBridge" printer.
-3. The Windows host agent (on the printer LAN) forwards jobs to the real Zebra printer (e.g. `192.168.50.25:9100`).
-
 ## Upgrade
 
-Re-run the installer with the new binary; it stops the service, replaces the binary, keeps config/data, and restarts:
+Re-run the installer (or install a newer release tag). It stops the service, replaces the binary, keeps `/etc/labelbridge/relay.env` and `/var/lib/labelbridge`, and restarts:
 
 ```bash
-sudo bash install-lxc.sh ./LabelBridge.Relay
+sudo bash install-lxc.sh
+# or local: sudo bash install-lxc.sh --local /path/to/LabelBridge.Relay
 ```
 
 ## Uninstall
 
 ```bash
-sudo bash install-lxc.sh --uninstall         # keep /etc/labelbridge and /var/lib/labelbridge
-sudo bash install-lxc.sh --uninstall --purge # remove everything (including queued jobs)
+sudo bash install-lxc.sh --uninstall         # keep config and data
+sudo bash install-lxc.sh --uninstall --purge # remove everything
 ```
 
-## Architecture note (printer discovery/selection)
+## Notes
 
-- The relay/server is currently a **store-and-forward** service: it queues jobs between Windows clients and a Windows host agent. It does **not** connect to printers and cannot discover printers on a remote LAN.
-- **If the LXC is on the same LAN as the printer**, a future/direct-print mode could let the server discover and print to the printer itself (feature not implemented yet).
-- **If the LXC is remote from the printer LAN** (common), "find/select printer from server web UI" must be implemented as **remote configuration of the Windows host agent** (host discovers local printers and reports them; server UI selects and pushes config) — also not implemented yet.
-
-To implement a full admin web UI and server-side printer discovery/selection, clarify: (1) is the LXC on the same network as the printer? (2) LAN-only or internet-facing UI, and desired authentication?
+- The LXC/server must be able to reach the network printer over TCP (typically port 9100).
+- Printing raw captured data depends on printer/driver compatibility (e.g. ZPL to a ZPL printer). If a Windows driver produces PDF/EMF/XPS, the target printer must support that format or an appropriate driver/profile/conversion must be used.
+- For internet exposure, use HTTPS and strong admin credentials; approve only trusted clients.

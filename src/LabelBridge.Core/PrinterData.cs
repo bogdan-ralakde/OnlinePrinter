@@ -53,11 +53,42 @@ public static class PrinterData
         return PrinterDataKind.Unknown;
     }
 
-    /// <summary>EMF/XPS/PDF cannot be sent raw to a label printer.</summary>
+    /// <summary>
+    /// Whether captured/queued data should be accepted for direct network printing.
+    /// EMF/XPS are Windows-rendered spool formats and cannot be sent as raw bytes
+    /// to a typical network label printer; reject them with a clear, actionable
+    /// error so the client/driver can be configured to emit printer-native data
+    /// (ZPL/EPL/TSPL/CPCL/ESC-POS, etc.) or a format the target printer accepts.
+    /// PDF/PostScript/unknown/raw printer languages are passed through as-is.
+    /// </summary>
     public static bool IsForwardable(PrinterDataKind kind) => kind switch
     {
-        PrinterDataKind.Emf or PrinterDataKind.Xps or PrinterDataKind.Pdf or PrinterDataKind.Empty => false,
+        PrinterDataKind.Empty => false,
+        PrinterDataKind.Emf => false,
+        PrinterDataKind.Xps => false,
         _ => true
+    };
+
+    /// <summary>True when bytes are commonly safe to pass through raw TCP/9100.</summary>
+    public static bool IsDirectPrinterRawFriendly(PrinterDataKind kind) => kind switch
+    {
+        PrinterDataKind.Zpl or PrinterDataKind.Epl or PrinterDataKind.EscPos
+            or PrinterDataKind.PostScript or PrinterDataKind.Pdf or PrinterDataKind.Unknown => true,
+        _ => false
+    };
+
+    public static string RejectReason(PrinterDataKind kind) => kind switch
+    {
+        PrinterDataKind.Empty => "Print job was empty.",
+        PrinterDataKind.Emf =>
+            "Captured Windows-rendered print data (EMF/GDI). A network label printer cannot print this format directly. " +
+            "Configure the local 'LabelBridge' printer to use a driver/profile that outputs the printer's native language " +
+            "(e.g. ZPL, EPL, TSPL, CPCL, ESC/POS) or a format the printer accepts (PDF/PostScript), then print again.",
+        PrinterDataKind.Xps =>
+            "Captured Windows-rendered print data (XPS). A network label printer cannot print this format directly. " +
+            "Configure the local 'LabelBridge' printer to use a driver/profile that outputs the printer's native language " +
+            "(e.g. ZPL, EPL, TSPL, CPCL, ESC/POS) or a format the printer accepts (PDF/PostScript), then print again.",
+        _ => "Captured print data format is not supported for direct network printing."
     };
 
     /// <summary>Small status queries some drivers send; never forward those.</summary>
@@ -73,7 +104,7 @@ public static class PrinterData
                || s.StartsWith("~HQ", StringComparison.Ordinal)
                || s.StartsWith("~HU", StringComparison.Ordinal)
                || s.StartsWith("~JA", StringComparison.Ordinal)
-               || s.StartsWith("\u001b@", StringComparison.Ordinal) && data.Length < 8;
+               || (s.StartsWith("\u001b@", StringComparison.Ordinal) && data.Length < 8);
     }
 
     public static string Describe(PrinterDataKind kind) => kind switch

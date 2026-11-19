@@ -1,267 +1,143 @@
 # LabelBridge
 
-Print to a label printer that is somewhere else.
+LabelBridge v1.0.0 is an all-in-one label print server with a web UI plus a Windows client.
 
-LabelBridge installs a **normal Windows printer** on a remote PC. Anything printed to it is
-captured, queued, sent over the internet, and printed on the real label printer — typically a
-Zebra ZD420 running ZPL. No port forwarding is needed on either side; both Windows PCs only make
-outbound connections.
+- **Server (Linux LXC/systemd, Docker, or console)**: admin login/setup, client approval, printer configuration (manual IP:port, probe/scan/test), durable queue, and direct printing to a network printer over TCP/9100.
+- **Windows client (Option A)**: installs a local virtual printer named `LabelBridge`. Any app can print to it; the client captures jobs, uploads them to the approved server, and the server forwards them directly to the configured network printer.
+- **No Windows host-agent / relay pairing flow** in v1.0.0. Clients connect to the server URL and are approved in the web UI.
+
+## Architecture
 
 ```
- Remote PC (any country)                    Your server / NAS                 Printer LAN
-┌──────────────────────────────┐          ┌────────────────────┐          ┌─────────────────────┐
-│ LabelBridge client (GUI)     │  HTTPS   │ LabelBridge relay  │          │ LabelBridge host    │
-│ virtual printer "LabelBridge"│ ───────► │ channels + durable │ ◄─────── │ agent (GUI)         │
-│ (ZDesigner ZPL driver)       │ outbound │ job queues         │ outbound │ 127.0.0.1:9100 ──►  │
-└──────────────────────────────┘          └────────────────────┘          │ Zebra ZD420 (ZPL)   │
-                                                                          └─────────────────────┘
+Windows app -> local "LabelBridge" virtual printer -> LabelBridge Windows client
+    -> HTTPS/HTTP to LabelBridge server (web UI/API, admin-approved client)
+    -> durable queue on server
+    -> direct TCP/9100 to network label printer
 ```
 
-- **Client PC** — has a virtual printer. Printing there produces ZPL through the normal Windows
-  GDI path, which LabelBridge captures and delivers.
-- **Relay** — a small container/LXC on a server you control. Stores jobs on disk until the host
-  acknowledges them. No printer credentials are stored there.
-- **Host PC** — next to the printer. Long-polls the relay and forwards jobs to the printer over
-  TCP 9100 (or through an installed Windows queue).
+## Supported capabilities
 
-Everything is retried with exponential backoff and survives restarts, app updates, and network
-outages on both sides.
+- **Server web UI/API**: `/health`, admin auth/password/setup, printer config, TCP/9100 probe/scan/test print, client register/status/claim/approve/revoke/delete, driver upload/select/download, job queue/status, and basic update info/apply endpoint.
+- **Windows client**: local capture on `127.0.0.1:<capture port>`, durable local queue with retry, registration/approval polling and token claim, server profile/driver metadata fetch, driver package download (SHA256 checked when provided by server metadata), best-effort driver installer launch and virtual-printer install/repair, GitHub release update check and best-effort client update apply.
+- **Generic printer/profile fields** (name/size/DPI/orientation/media/method/darkness/speed/driver hint/print language) are stored on the server and pushed to approved clients.
 
----
+## Important limitations (v1.0.0)
 
-## Quick start
+- **No print-format conversion is bundled.** Jobs are forwarded as raw bytes over TCP/9100.
+  - **Rejected:** empty jobs and Windows-rendered spool formats (`EMF`, `XPS`) with actionable errors.
+  - **Accepted/pass-through:** `ZPL`, `EPL`, `ESC/POS`, `PostScript`, `PDF`, and unknown raw data (printer/profile must support the format).
+  - `PDF` is passed through only; if your printer does not natively accept PDF, use a driver/profile that produces a printer-native language (for example ZPL/EPL).
+- **Driver/profile auto-apply is best-effort.** The server can host an unmodified driver package and profile metadata, and the client can download and launch installers and install/repair the `LabelBridge` printer. Actual silent install, driver binding, and Printing Preferences/Defaults configuration depend on the provided driver package, permissions (admin/UAC), and driver capabilities; manual steps may still be required.
+- **Auto-update apply is best-effort.**
+  - **Server:** Linux/systemd installs can download the latest `labelbridge-relay-linux-x64.tar.gz`, verify checksum when a release checksum asset is available, replace the binary if writable, and request restart; otherwise a manual upgrade command is shown.
+  - **Windows client:** checks GitHub releases, downloads a Windows asset (`LabelBridge-*-win-x64.zip` preferred), verifies checksum when available, stages and launches an elevated updater; manual install from release assets remains the fallback.
+- **Not fully end-to-end validated in this environment:** real network printers, elevated Windows driver/virtual-printer install, LXC/Docker deployment, and production GitHub release publish/download flows.
 
-### 1. Start the relay (once)
+## Server installation (Linux LXC/systemd, preserved contract)
 
-On TrueNAS SCALE, any Docker host, or a Linux LXC:
+Install latest release (public repo):
 
 ```bash
-mkdir -p /opt/labelbridge && cd /opt/labelbridge
-# copy docker/docker-compose.yml and docker/Dockerfile's parent folder here (see docs/relay-truenas.md)
-echo "LB_ADMIN_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '/+=')" > .env
-docker compose up -d --build
-curl http://127.0.0.1:8080/health     # -> ok channels=0 jobs=0 uptime=0h00m
+curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-lxc.sh | sudo bash
 ```
 
-Put HTTPS in front of it (Caddy, Traefik, nginx, or Cloudflare Tunnel). Full instructions:
-[`docs/relay-truenas.md`](docs/relay-truenas.md).
-
-### 2. Install on the printer PC — choose **Host**
-
-1. Install the **Zebra ZDesigner driver for your exact model, ZPL version**
-   (here: `ZDesigner ZD420-300dpi ZPL`). LabelBridge does not ship drivers.
-2. Run `Setup.cmd` from the package and approve the administrator prompt.
-3. Open LabelBridge → **Overview** → select **Host** → **Apply & restart**.
-4. **Printer** tab → enter the printer's IP (e.g. `192.168.50.25`, port `9100`) →
-   **Check printer** → **Send test label**.
-5. **Connection** tab → enter your relay URL (e.g. `https://print.example.com`) and the admin
-   secret → **Create channel**.
-6. **Pairing** tab → **Copy code** and send it to the remote users (chat/e-mail is fine, but treat
-   it as a password — see [Security](#security)).
-
-### 3. Install on each remote PC — choose **Client**
-
-1. Run `Setup.cmd` (answer **Y** to install the virtual printer). If the ZDesigner driver is
-   missing, install it from Zebra first.
-2. Open LabelBridge → **Overview** → select **Client** → **Apply & restart**.
-3. **Pairing** tab → paste the code from the host → **Use this code**.
-4. Print from Notepad, Word, your ERP… choose the printer **LabelBridge**.
-5. Watch the job in the **Jobs** tab (with a text/hex preview of the captured ZPL).
-
-That's it. If the printer or the internet is temporarily down, jobs wait in the queue and print
-when it comes back.
-
----
-
-## What gets installed
-
-| Thing | Detail |
-| --- | --- |
-| Program | `%ProgramFiles%\LabelBridge` (single-file exe, self-contained, no .NET needed) |
-| Data | `%ProgramData%\LabelBridge` — settings, TLS cert, queues, history, logs |
-| Virtual printer (client) | queue `LabelBridge`, TCP/IP port `LabelBridge_Loopback` → `127.0.0.1:9191`, driver `ZDesigner … ZPL` |
-| Optional raw printer (client) | queue `LabelBridge Raw` using `Generic / Text Only`, for apps that already emit ZPL |
-| Shortcuts | Start Menu + Desktop |
-| Uninstall | "Apps & features" → LabelBridge (data is kept unless you delete it) |
-| Firewall | inbound rule "LabelBridge direct TLS" for TCP 9443 (host/direct mode only) |
-
-The installer never touches your real printer queue; it only adds the virtual one.
-
----
-
-## Two transport modes
-
-**Relay mode (recommended, works across the internet).**
-
-Both sides connect *out* to your relay. Survives CGNAT, changing IPs, hotel Wi-Fi. Jobs are stored
-on disk at the relay until the host acknowledges printing.
-
-**Direct TLS mode (LAN, VPN, Tailscale).**
-
-The host listens on port 9443 with a self-signed certificate; clients pin its SHA-256 fingerprint
-from the pairing code and authenticate each job with HMAC-SHA256. No relay needed, but the client
-must be able to reach the host (same LAN, VPN, or a port forward — not recommended on the open
-internet).
-
-You can enable both; the pairing code decides which one a client uses.
-
----
-
-## Requirements
-
-**Client PC / Host PC**
-
-- Windows 10 or 11, x64
-- Zebra **ZDesigner driver, ZPL variant**, matching the printer's model and DPI
-  ([Zebra driver downloads](https://www.zebra.com/us/en/support-downloads/printer-software/printer-driver.html))
-- Outbound HTTPS (443) for relay mode; outbound TCP 9100 to the printer on the host
-
-**Relay**
-
-- Anything that runs a container: TrueNAS SCALE, Docker, Podman, or a Linux LXC
-- ~50 MB RAM, disk proportional to queue depth (a label is typically 1–20 KB)
-- A TLS-terminating reverse proxy for internet use
-
----
-
-## Build from source
-
-```powershell
-# Windows package + ZIP + optional linux-x64 relay binary
-powershell -ExecutionPolicy Bypass -File installer\Build.ps1
-```
-
-Output:
-
-```
-dist\LabelBridge\                 app + installer scripts (copy this whole folder, or the ZIP)
-dist\LabelBridge-1.0.0-win-x64.zip
-dist\relay-linux-x64\             single-file relay for LXC/non-Docker hosts
-```
-
-Useful flags: `-SkipLinuxRelay`, `-SkipZip`, `-FrameworkDependent`, `-Version 1.2.3`.
-
-Container image:
+Install specific version:
 
 ```bash
-docker build -f docker/Dockerfile -t labelbridge/relay:1.0.0 .
-docker compose -f docker/docker-compose.yml up -d
+curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-lxc.sh | sudo LABELBRIDGE_VERSION=v1.0.0 bash
 ```
 
-Regression tests (no hardware, no admin needed):
+Preserved install/runtime contract:
+- Service: `labelbridge-relay`
+- Binary: `/opt/labelbridge/LabelBridge.Relay`
+- Config/env: `/etc/labelbridge/relay.env` (`LB_*` vars)
+- Data: `/var/lib/labelbridge`
+- Health: `GET /health` and `LabelBridge.Relay --health-check <url>`
+- Release asset: `labelbridge-relay-linux-x64.tar.gz`
+
+See [`docs/lxc-install.md`](docs/lxc-install.md) for details, reverse proxy/HTTPS guidance, upgrade, and uninstall.
+
+## Docker
+
+Docker assets are in [`docker/`](docker/). The container runs the server binary (`LabelBridge.Relay`) and serves the web UI/API on port 8080 with data in `/data`. Use a TLS reverse proxy for internet access.
+
+## Windows client installation and flow
+
+1. Build or download the Windows client package (`LabelBridge-1.0.0-win-x64.zip`) and run `Setup.cmd` / `Install.ps1` as administrator.
+2. Start **LabelBridge Client**.
+3. **Server & Approval** tab: set server base URL and device name, then **Request / Register**.
+4. Approve the client in the server web UI (**Clients** tab).
+5. After approval the client claims a token and fetches printer/profile/driver info. Download/install the server-provided driver package if required (admin/UAC may be needed).
+6. **Virtual Printer** tab: install/repair the local `LabelBridge` printer (select a driver compatible with your printer/profile; e.g. ZPL-capable driver for a ZPL printer).
+7. Print from any Windows application to printer **LabelBridge**. Jobs are captured locally, queued, uploaded to the server, queued server-side, and printed directly to the configured network printer (TCP/9100).
+
+CLI helpers:
 
 ```powershell
-src\LabelBridge.Windows\bin\Release\net8.0-windows\LabelBridge.exe --selftest
+LabelBridge.exe --help
+LabelBridge.exe --paths
+LabelBridge.exe --printer-status
+LabelBridge.exe --printer-install [--driver <name>] [--port <n>]
+LabelBridge.exe --printer-remove
+LabelBridge.exe --selftest
+LabelBridge.exe --send <file> [--server <url> --token <approved-client-token>]
 ```
 
----
+## Server web UI (admin)
 
-## Command line
+- **Setup/Login:** initial admin password comes from `LB_ADMIN_SECRET` on first setup; change it in **Settings**.
+- **Printer:** configure name/host/port/profile, test connection, scan subnet, send test label, enable/disable printing.
+- **Clients:** approve/decline/revoke/delete registered clients.
+- **Drivers:** upload unmodified driver packages/installers, select active package for clients, delete.
+- **Jobs:** view recent/queued/printed/failed jobs.
+- **Settings:** change admin password, view client connection info, check/apply server updates (best-effort on Linux/systemd).
 
-```
-LabelBridge                            open the GUI
-LabelBridge --role host|client         open the GUI in a specific role
-LabelBridge --send <file> --pair <code|@file>
-                                      send a raw ZPL/EPL file with a pairing code
-LabelBridge --printer-install [--driver <name>] [--port <n>] [--raw]
-                                      create/repair the virtual printer (needs admin)
-LabelBridge --printer-remove [--name <n>]
-                                      delete the virtual printer
-LabelBridge --printer-status           printers/drivers/ports as JSON
-LabelBridge --pairing                  print this host's pairing code
-LabelBridge --daemon [--role host]      run headless (no GUI)
-LabelBridge --paths                    show data folders
-LabelBridge --relay [--listen …] …      run the relay (Windows/Linux)
-LabelBridge --selftest                 end-to-end self-test
-```
+## Build
 
-Relay: `--listen http://+:8080/`, `--data <dir>`, `--admin <secret>`, `--max-jobs`, `--max-mb`,
-`--retention-hours`, `--health-check <url>`. Environment equivalents: `LB_LISTEN`, `LB_DATA`,
-`LB_ADMIN_SECRET`, `LB_MAX_JOBS`, `LB_MAX_MB`, `LB_RETENTION_HOURS`.
-
-The relay HTTP API is documented in [`docs/protocol.md`](docs/protocol.md).
-
----
-
-## Security
-
-- **Tokens are stored hashed** at the relay (SHA-256). Each channel has a separate host token and
-  client token, so a leaked client code cannot drain or delete the channel.
-- **The pairing code is a secret.** It contains the relay URL, channel id and client token. Anyone
-  who has it can print to your printer. Rotate by deleting the channel (host) and creating a new
-  one — existing clients must re-pair.
-- **The relay never learns the printer address**, and it cannot initiate connections to your LAN.
-- **The relay does see label payloads.** That is unavoidable for a store-and-forward relay. Host it
-  yourself (as here) and use HTTPS. For highly sensitive data use direct TLS over Tailscale/VPN
-  instead.
-- **Always use HTTPS** for a relay reachable from the internet. The relay itself speaks HTTP so a
-  reverse proxy can own the certificate; see the deployment guide.
-- Direct mode pins the self-signed certificate fingerprint, and each job is HMAC-signed. The
-  certificate is created on first run (`%ProgramData%\LabelBridge\certs`).
-
----
-
-## Limits and behaviour
-
-- Max job size 64 MB at the relay (configurable with `--max-mb`); default 1000 queued jobs per
-  channel; unclaimed jobs expire after 7 days (`--retention-hours`).
-- The client queue and the host queue keep up to 2000/2000 jobs on disk and retry with backoff
-  (1 s → 120 s).
-- Jobs already printed are archived under `%ProgramData%\LabelBridge\history` (last 600, with
-  payloads, so the Jobs tab can preview them).
-- Updating the app never loses queued jobs — they are plain files in the data folder.
-- The client must be running (or use **Start when I sign in**) for jobs to be captured. If
-  LabelBridge is closed, Windows will keep the job in the spooler and print it once LabelBridge
-  starts.
-
----
-
-## Troubleshooting
-
-Fast checks:
+Requires .NET SDK 8.0+.
 
 ```powershell
-LabelBridge.exe --paths           # where settings, queues and logs live
-LabelBridge.exe --printer-status  # is the virtual printer installed? which driver?
-LabelBridge.exe --selftest        # full relay/TLS/queue regression test
+# Build solution
+dotnet build LabelBridge/LabelBridge.sln -c Release -m:1
+
+# Windows client self-test
+dotnet exec LabelBridge/src/LabelBridge.Windows/bin/Release/net8.0-windows/LabelBridge.dll --selftest
+
+# Package Windows client + Linux server asset
+powershell -ExecutionPolicy Bypass -File LabelBridge/installer/Build.ps1 -Version 1.0.0
 ```
 
-| Symptom | Likely cause / fix |
-| --- | --- |
-| `The virtual printer produced EMF instead of ZPL` | Wrong driver. Install/repair the printer and pick a `ZDesigner … ZPL` driver (not the "EPL"/"CPCL"/"v5" one). |
-| Jobs stay "Queued" on a client | Host app not running, wrong pairing code, or relay unreachable. **Check connection** on the Connection tab. |
-| `401` / "pairing rejected" | Channel was deleted or the code is stale. Create a new channel and re-pair. |
-| Relay unreachable | Reverse proxy not forwarding, HTTPS certificate invalid, or client PC has no outbound 443. |
-| Printer offline → jobs pending on host | Expected. Jobs print automatically when the printer answers again. |
-| Print job hangs in the Windows queue on the client | LabelBridge is not running; start it (it captures on `127.0.0.1:9191`). |
-| Port 9191 already in use | Change **Capture port** in the Printer tab, reinstall/repair the printer, apply. |
-| Direct mode connection refused | Firewall (allow TCP 9443), wrong IP in the code, or client not on the same LAN/VPN. |
-| Fingerprint mismatch error | Host certificate was recreated; build a fresh pairing code. |
+`installer/Build.ps1` produces `dist/LabelBridge/`, `dist/LabelBridge-<version>-win-x64.zip`, and (unless skipped) `dist/labelbridge-relay-linux-x64.tar.gz`.
 
-Logs: `%ProgramData%\LabelBridge\logs\labelbridge-YYYYMMDD.log`, and the in-app **Log** tab.
+## Releases
 
-More: [`docs/troubleshooting.md`](docs/troubleshooting.md).
-
----
+- Version: `1.0.0`
+- Expected release assets for installer/update flows:
+  - `labelbridge-relay-linux-x64.tar.gz` (server/LXC install & server auto-update)
+  - `LabelBridge-1.0.0-win-x64.zip` (Windows client package & client auto-update)
+  - Optional checksum asset (for example `SHA256SUMS.txt`) for integrity verification
 
 ## Repository layout
 
 ```
 LabelBridge/
-  src/LabelBridge.Core/       engine, transports, relay, storage (net8.0, no UI)
-  src/LabelBridge.Windows/    WinForms GUI + printer installer + CLI (net8.0-windows)
-  src/LabelBridge.Relay/      relay console host (Linux/Docker/Windows)
-  installer/                  Build.ps1, Install.ps1, Uninstall.ps1, Setup.cmd
-  docker/                     Dockerfile, docker-compose.yml, entrypoint
-  docs/                       deployment, Windows setup, protocol, troubleshooting
-  dist/                       build output (generated)
+  src/LabelBridge.Core/        server logic, storage, queue/print services, embedded web UI, shared utilities
+  src/LabelBridge.Windows/     Windows client UI/services/capture/printer helpers/CLI
+  src/LabelBridge.Relay/       server host/entrypoint (binary name kept for LXC contract)
+  scripts/install-lxc.sh       Linux LXC/systemd install/upgrade/uninstall (auto-download release asset)
+  installer/                   Windows package build/install/uninstall scripts
+  docker/                      Dockerfile, compose, entrypoint
+  docs/lxc-install.md          LXC/server deployment notes
+  docs/troubleshooting.md      troubleshooting
 ```
 
-Third-party libraries: none. Only the .NET BCL and WinForms.
+## Troubleshooting
 
----
+See [`docs/troubleshooting.md`](docs/troubleshooting.md).
 
-## Licence / disclaimer
+## Security notes
 
-Provided as-is. Test the complete path with a real label before relying on it in production,
-especially after changing drivers, printer firmware, or the relay host.
+- Use HTTPS (reverse proxy/TLS termination) when exposing the server over the internet.
+- Protect admin credentials and approve only trusted clients.
+- Client tokens are issued on approval/claim and required for client API access; revoke compromised clients in the web UI.
+- Uploaded driver packages are stored on the server; only upload trusted, unmodified vendor packages.

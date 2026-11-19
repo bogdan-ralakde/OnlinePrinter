@@ -1,16 +1,12 @@
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Net;
-using System.Net.Sockets;
-using System.Security.Cryptography;
 using System.Text;
 using LabelBridge.Core;
+using LabelBridge.Core.Server;
 
 namespace LabelBridge.Services;
 
 /// <summary>
-/// End-to-end verification with no GUI and no hardware: a fake printer, a real
-/// relay, a host engine and a client engine in one process.
+/// Built-in verification for the server+client (Option A) architecture.
+/// Runs locally with no GUI, no hardware and no internet access.
 /// </summary>
 internal static class SelfTest
 {
@@ -20,20 +16,18 @@ internal static class SelfTest
     public static int Run(string[] args)
     {
         Log.Minimum = LogLevel.Warn;
-        Console.WriteLine("LabelBridge self-test");
-        Console.WriteLine("=====================");
+        Console.WriteLine("LabelBridge self-test (Option A)");
+        Console.WriteLine("================================");
 
         var root = Path.Combine(Path.GetTempPath(), "labelbridge-selftest-" + Guid.NewGuid().ToString("N")[..8]);
-
         try
         {
             Directory.CreateDirectory(root);
-            TestPairing();
-            TestJobFile(root);
-            TestClassifier();
-            TestRelayEndToEnd(root).GetAwaiter().GetResult();
-            TestDirectEndToEnd(root).GetAwaiter().GetResult();
-            TestDurability(root).GetAwaiter().GetResult();
+            TestFormatPolicy();
+            TestJobFileRoundTrip(root);
+            TestServerStoreAndApproval(root);
+            TestServerPrintQueuePolicy(root).GetAwaiter().GetResult();
+            TestTestLabelGeneration(root);
         }
         catch (Exception ex)
         {
@@ -46,347 +40,151 @@ internal static class SelfTest
 
         Console.WriteLine();
         Console.WriteLine($"Passed: {_passes}   Failed: {_failures}");
+        if (_failures == 0)
+            Console.WriteLine("Core checks passed. Full end-to-end validation still requires: web UI/admin approval, Windows virtual printer install (admin), and a reachable network printer (TCP/9100).");
         return _failures == 0 ? 0 : 1;
     }
 
-    // ---------------------------------------------------------------- tests
-
-    private static void TestPairing()
+    private static void TestFormatPolicy()
     {
         try
         {
-            var pair = new PairInfo
-            {
-                Mode = "relay",
-                RelayUrl = "https://print.example.com",
-                ChannelId = "abc123",
-                ClientToken = "secret-token",
-                PrinterName = "LabelBridge",
-                Label = "Zebra ZD420 – Büro"
-            };
+            var zpl = Encoding.ASCII.GetBytes("^XA^FO20,20^FDHELLO^FS^XZ");
+            var epl = Encoding.ASCII.GetBytes("\nN\nA20,20,0,4,1,1,N,\"HI\"\nP1\n");
+            var pdf = Encoding.ASCII.GetBytes("%PDF-1.4\n%...");
+            var ps = Encoding.ASCII.GetBytes("%!PS-Adobe-3.0\n...");
+            var emf = new byte[64];
+            emf[0] = 1; emf[40] = (byte)' '; emf[41] = (byte)'E'; emf[42] = (byte)'M'; emf[43] = (byte)'F';
+            var xps = new byte[] { (byte)'P', (byte)'K', 3, 4, 0, 0 };
+            var empty = Array.Empty<byte>();
 
-            var code = Pairing.Encode(pair);
-            var back = Pairing.TryDecode(code);
+            Expect(PrinterData.Classify(zpl) == PrinterDataKind.Zpl, "ZPL detected");
+            Expect(PrinterData.Classify(epl) == PrinterDataKind.Epl, "EPL detected");
+            Expect(PrinterData.Classify(pdf) == PrinterDataKind.Pdf, "PDF detected");
+            Expect(PrinterData.Classify(ps) == PrinterDataKind.PostScript, "PostScript detected");
+            Expect(PrinterData.Classify(emf) == PrinterDataKind.Emf, "EMF detected");
+            Expect(PrinterData.Classify(xps) == PrinterDataKind.Xps, "XPS detected");
 
-            if (back == null) throw new Exception("decode returned null");
-            if (back.ChannelId != pair.ChannelId || back.ClientToken != pair.ClientToken) throw new Exception("values differ");
-            if (back.Label != pair.Label) throw new Exception("unicode label lost");
-            if (!back.IsComplete) throw new Exception("pair marked incomplete");
+            Expect(PrinterData.IsForwardable(PrinterDataKind.Zpl), "ZPL accepted for direct pass-through");
+            Expect(PrinterData.IsForwardable(PrinterDataKind.Pdf), "PDF accepted for pass-through (printer/profile must support)");
+            Expect(!PrinterData.IsForwardable(PrinterDataKind.Emf), "EMF rejected for raw network printing");
+            Expect(!PrinterData.IsForwardable(PrinterDataKind.Xps), "XPS rejected for raw network printing");
+            Expect(!PrinterData.IsForwardable(PrinterDataKind.Empty), "empty rejected");
+            Expect(!string.IsNullOrWhiteSpace(PrinterData.RejectReason(PrinterDataKind.Emf)), "EMF rejection reason provided");
 
-            Pass("pairing code round-trip");
+            Pass("format detection and direct-print policy");
         }
-        catch (Exception ex) { Fail("pairing code round-trip: " + ex.Message); }
+        catch (Exception ex) { Fail("format detection and direct-print policy: " + ex.Message); }
     }
 
-    private static void TestJobFile(string root)
+    private static void TestJobFileRoundTrip(string root)
     {
         try
         {
-            var job = new PrintJob { Name = "job one", Source = "selftest", Data = Encoding.ASCII.GetBytes("^XA^FO10,10^FDhi^FS^XZ") };
             var path = Path.Combine(root, "job.job");
+            var job = new PrintJob { Id = Guid.NewGuid().ToString("N"), Name = "test", Source = "selftest", Data = Encoding.UTF8.GetBytes("^XA^FDX^FS^XZ") };
             JobFile.Write(path, job);
             var back = JobFile.Read(path);
-
-            if (back.Id != job.Id || back.Name != job.Name || !back.Data.SequenceEqual(job.Data))
-                throw new Exception("job contents were not preserved");
-
-            var header = JobFile.ReadHeader(path);
-            if (header.Id != job.Id) throw new Exception("header id mismatch");
-
-            Pass("durable job container round-trip");
+            Expect(back.Id == job.Id && back.Name == job.Name && back.Data.SequenceEqual(job.Data), "job contents preserved");
+            var hdr = JobFile.ReadHeader(path);
+            Expect(hdr.Id == job.Id, "header readable");
+            Pass("durable job file round-trip");
         }
-        catch (Exception ex) { Fail("durable job container round-trip: " + ex.Message); }
+        catch (Exception ex) { Fail("durable job file round-trip: " + ex.Message); }
     }
 
-    private static void TestClassifier()
+    private static void TestServerStoreAndApproval(string root)
     {
         try
         {
-            var zpl = Encoding.ASCII.GetBytes("^XA^FO50,50^A0N,40,40^FDHELLO^FS^XZ");
-            if (PrinterData.Classify(zpl) != PrinterDataKind.Zpl) throw new Exception("ZPL not detected");
-            if (PrinterData.Classify(new byte[] { 0x25, 0x50, 0x44, 0x46 }) != PrinterDataKind.Pdf) throw new Exception("PDF not detected");
-            if (PrinterData.IsForwardable(PrinterDataKind.Emf)) throw new Exception("EMF should be rejected");
-            Pass("printer-language detection");
+            var dir = Path.Combine(root, "server");
+            var store = new ServerStore(dir);
+            store.EnsureAdmin("init-secret");
+            Expect(!store.State.SetupComplete, "initial admin requires password change/setup by default for generated flow");
+            var (ok, token, err) = store.Login("admin", "init-secret");
+            Expect(ok && !string.IsNullOrWhiteSpace(token), "admin login with initial secret: " + (err ?? "ok"));
+            Expect(store.ValidateSession(token), "session valid");
+            Expect(store.ChangePassword("init-secret", "new-pass-123"), "password changed");
+            var (ok2, token2, _) = store.Login("admin", "new-pass-123");
+            Expect(ok2 && !string.IsNullOrWhiteSpace(token2), "login with new password");
+
+            var client = store.AddPendingClient("PC1", "MACHINE1");
+            Expect(client.Status == nameof(ClientStatus.Pending), "client pending");
+            var (approved, issued) = store.ApproveClient(client.Id);
+            Expect(approved != null && !string.IsNullOrWhiteSpace(issued), "client approved with token");
+            var claimed = store.ClaimClientToken(client.Id);
+            Expect(claimed == issued, "token claim returns issued token once");
+            var claimed2 = store.ClaimClientToken(client.Id);
+            Expect(string.IsNullOrEmpty(claimed2), "token cannot be claimed twice");
+            var authed = store.ValidateClientToken(issued);
+            Expect(authed != null && authed.Id == client.Id, "claimed token authenticates client");
+            store.SetClientStatus(client.Id, ClientStatus.Revoked);
+            Expect(store.ValidateClientToken(issued) == null, "revoked token rejected");
+
+            store.State.Printer.Host = "10.0.0.5"; store.State.Printer.Port = 9100;
+            store.State.Printer.Profile.Name = "4x6"; store.State.Printer.Profile.Width = "4in"; store.State.Printer.Profile.Height = "6in";
+            store.Save();
+            var store2 = new ServerStore(dir);
+            Expect(store2.State.Printer.Host == "10.0.0.5" && store2.State.Printer.Profile.Width == "4in", "state persisted");
+
+            Pass("server store, auth, client approval/token claim, persistence");
         }
-        catch (Exception ex) { Fail("printer-language detection: " + ex.Message); }
+        catch (Exception ex) { Fail("server store/auth/approval: " + ex.Message); }
     }
 
-    private static async Task TestRelayEndToEnd(string root)
+    private static async Task TestServerPrintQueuePolicy(string root)
     {
-        var relay = (RelayServer?)null;
-        var host = (BridgeEngine?)null;
-        var client = (BridgeEngine?)null;
-        var printer = new FakePrinter();
-
         try
         {
-            var relayPort = FreePort();
-            var relayUrl = $"http://127.0.0.1:{relayPort}";
-            relay = new RelayServer(new RelayOptions
-            {
-                ListenPrefix = relayUrl + "/",
-                DataDir = Path.Combine(root, "relay"),
-                MaxJobsPerChannel = 100
-            });
-            relay.Start();
+            var dir = Path.Combine(root, "printsvc");
+            var store = new ServerStore(dir);
+            store.State.Printer.Host = ""; // keep worker from actually printing
+            store.Save();
+            var cfg = new ServerConfig { DataDir = dir, MaxPayloadBytes = 1024 * 1024, MaxJobs = 100 };
+            using var svc = new PrintService(store, cfg);
 
-            var (channelId, hostToken, clientToken) =
-                await RelayPoller.CreateChannelAsync(relayUrl, "", "selftest", CancellationToken.None);
+            var (okZpl, msgZpl, idZpl) = await svc.EnqueueJobAsync("c1", "label", Encoding.ASCII.GetBytes("^XA^XZ"));
+            Expect(okZpl && !string.IsNullOrEmpty(idZpl), "ZPL job accepted: " + msgZpl);
 
-            printer.Start();
+            var pdf = Encoding.ASCII.GetBytes("%PDF-1.4 test");
+            var (okPdf, msgPdf, _) = await svc.EnqueueJobAsync("c1", "doc.pdf", pdf);
+            Expect(okPdf, "PDF accepted for raw pass-through (printer must support): " + msgPdf);
 
-            var hostSettings = new AppSettings
-            {
-                Role = "host",
-                TargetHost = "127.0.0.1",
-                TargetPort = printer.Port,
-                DirectServerEnabled = false,
-                RelayPollEnabled = true,
-                RelayUrl = relayUrl,
-                ChannelId = channelId,
-                HostToken = hostToken,
-                MaxRetrySeconds = 5
-            };
+            var emf = new byte[64];
+            emf[0] = 1; emf[40] = (byte)' '; emf[41] = (byte)'E'; emf[42] = (byte)'M'; emf[43] = (byte)'F';
+            var (okEmf, msgEmf, _) = await svc.EnqueueJobAsync("c1", "bad", emf);
+            Expect(!okEmf && (msgEmf?.Contains("EMF", StringComparison.OrdinalIgnoreCase) ?? false), "EMF rejected with clear reason: " + msgEmf);
 
-            var clientSettings = new AppSettings
-            {
-                Role = "client",
-                CapturePort = FreePort(),
-                Pair = new PairInfo
-                {
-                    Mode = "relay",
-                    RelayUrl = relayUrl,
-                    ChannelId = channelId,
-                    ClientToken = clientToken
-                }
-            };
+            var xps = new byte[] { (byte)'P', (byte)'K', 3, 4, 1, 2, 3, 4 };
+            var (okXps, msgXps, _) = await svc.EnqueueJobAsync("c1", "bad", xps);
+            Expect(!okXps && (msgXps?.Contains("XPS", StringComparison.OrdinalIgnoreCase) ?? false), "XPS rejected with clear reason: " + msgXps);
 
-            host = new BridgeEngine(hostSettings, Path.Combine(root, "host"));
-            client = new BridgeEngine(clientSettings, Path.Combine(root, "client"));
-
-            await host.StartAsync();
-            await client.StartAsync();
-
-            var sent = new List<byte[]>
-            {
-                MakeZpl(1, 2_000),
-                MakeZpl(2, 200_000),
-                MakeZpl(3, 2_000_000)
-            };
-
-            foreach (var payload in sent)
-            {
-                var path = Path.Combine(root, $"relay-{Guid.NewGuid():N}.prn");
-                await File.WriteAllBytesAsync(path, payload);
-                await client.QueueFileAsync(path);
-            }
-
-            var ok = await WaitUntil(() => printer.Received.Count >= sent.Count, TimeSpan.FromSeconds(45));
-
-            if (!ok)
-                throw new Exception($"only {printer.Received.Count}/{sent.Count} jobs reached the printer");
-
-            var received = printer.Received.ToArray();
-            foreach (var payload in sent)
-            {
-                if (!received.Any(r => r.SequenceEqual(payload)))
-                    throw new Exception($"payload of {payload.Length:N0} bytes was altered in transit");
-            }
-
-            Pass($"relay end-to-end ({sent.Sum(s => s.Length):N0} bytes in 3 jobs)");
+            Pass("server enqueue/queue format policy");
         }
-        catch (Exception ex) { Fail("relay end-to-end: " + ex.Message); }
-        finally
-        {
-            if (client != null) await client.StopAsync();
-            if (host != null) await host.StopAsync();
-            relay?.Stop();
-            printer.Dispose();
-        }
+        catch (Exception ex) { Fail("server enqueue/queue format policy: " + ex.Message); }
     }
 
-    private static async Task TestDirectEndToEnd(string root)
+    private static void TestTestLabelGeneration(string root)
     {
-        var host = (BridgeEngine?)null;
-        var client = (BridgeEngine?)null;
-        var printer = new FakePrinter();
-
         try
         {
-            printer.Start();
-
-            var hostSettings = new AppSettings
-            {
-                Role = "host",
-                TargetHost = "127.0.0.1",
-                TargetPort = printer.Port,
-                DirectServerEnabled = true,
-                DirectPort = FreePort(),
-                DirectKey = Pairing.NewKeyText(),
-                RelayPollEnabled = false,
-                MaxRetrySeconds = 5
-            };
-
-            host = new BridgeEngine(hostSettings, Path.Combine(root, "direct-host"));
-            await host.StartAsync();
-
-            var fingerprint = host.DirectFingerprint;
-            if (string.IsNullOrWhiteSpace(fingerprint)) throw new Exception("host did not expose a TLS fingerprint");
-
-            var clientSettings = new AppSettings
-            {
-                Role = "client",
-                CapturePort = FreePort(),
-                Pair = new PairInfo
-                {
-                    Mode = "direct",
-                    Host = "127.0.0.1",
-                    Port = hostSettings.DirectPort,
-                    Key = hostSettings.DirectKey,
-                    Fingerprint = fingerprint
-                }
-            };
-
-            client = new BridgeEngine(clientSettings, Path.Combine(root, "direct-client"));
-            client.Notice += n =>
-            {
-                if (n.Kind is NoticeKind.Failed or NoticeKind.Warning)
-                    Console.WriteLine("    [client] " + n.Message);
-            };
-            await client.StartAsync();
-
-            var payload = MakeZpl(9, 150_000);
-            var path = Path.Combine(root, "direct.prn");
-            await File.WriteAllBytesAsync(path, payload);
-            await client.QueueFileAsync(path);
-
-            var ok = await WaitUntil(() => printer.Received.Count >= 1, TimeSpan.FromSeconds(30));
-            if (!ok) throw new Exception("job did not arrive over TLS");
-            if (!printer.Received.First().SequenceEqual(payload)) throw new Exception("payload altered in transit");
-
-            Pass("direct TLS end-to-end with certificate pinning");
+            var dir = Path.Combine(root, "labels");
+            var store = new ServerStore(dir);
+            using var svc = new PrintService(store, new ServerConfig { DataDir = dir });
+            var zpl = svc.BuildTestLabel(new PrinterProfile { PrintLanguage = "ZPL", Name = "P", Width = "4in", Height = "6in", Dpi = "203" });
+            Expect(Encoding.UTF8.GetString(zpl).Contains("^XA"), "ZPL test label");
+            var epl = svc.BuildTestLabel(new PrinterProfile { PrintLanguage = "EPL" });
+            Expect(Encoding.ASCII.GetString(epl).Contains("P1"), "EPL test label");
+            var tspl = svc.BuildTestLabel(new PrinterProfile { PrintLanguage = "TSPL", Width = "100", Height = "60" });
+            Expect(Encoding.ASCII.GetString(tspl).Contains("PRINT"), "TSPL test label");
+            Pass("test label generation per print language");
         }
-        catch (Exception ex) { Fail("direct TLS end-to-end: " + ex.Message); }
-        finally
-        {
-            if (client != null) await client.StopAsync();
-            if (host != null) await host.StopAsync();
-            printer.Dispose();
-        }
+        catch (Exception ex) { Fail("test label generation: " + ex.Message); }
     }
 
-    private static async Task TestDurability(string root)
+    private static void Expect(bool condition, string message)
     {
-        var relay = (RelayServer?)null;
-        var host = (BridgeEngine?)null;
-        var client = (BridgeEngine?)null;
-        var printer = new FakePrinter(); // created but NOT started = printer offline
-
-        try
-        {
-            var relayPort = FreePort();
-            var relayUrl = $"http://127.0.0.1:{relayPort}";
-
-            relay = new RelayServer(new RelayOptions
-            {
-                ListenPrefix = relayUrl + "/",
-                DataDir = Path.Combine(root, "relay2")
-            });
-            relay.Start();
-
-            var (channelId, hostToken, clientToken) =
-                await RelayPoller.CreateChannelAsync(relayUrl, "", "durability", CancellationToken.None);
-
-            var hostSettings = new AppSettings
-            {
-                Role = "host",
-                TargetHost = "127.0.0.1",
-                TargetPort = printer.Port,
-                DirectServerEnabled = false,
-                RelayPollEnabled = true,
-                RelayUrl = relayUrl,
-                ChannelId = channelId,
-                HostToken = hostToken,
-                MaxRetrySeconds = 5
-            };
-
-            var clientSettings = new AppSettings
-            {
-                Role = "client",
-                CapturePort = FreePort(),
-                Pair = new PairInfo { Mode = "relay", RelayUrl = relayUrl, ChannelId = channelId, ClientToken = clientToken }
-            };
-
-            host = new BridgeEngine(hostSettings, Path.Combine(root, "dur-host"));
-            client = new BridgeEngine(clientSettings, Path.Combine(root, "dur-client"));
-
-            await host.StartAsync();
-            await client.StartAsync();
-
-            var payload = MakeZpl(42, 25_000);
-            var path = Path.Combine(root, "durable.prn");
-            await File.WriteAllBytesAsync(path, payload);
-            await client.QueueFileAsync(path);
-
-            var queued = await WaitUntil(() => host.PendingCount >= 1, TimeSpan.FromSeconds(20));
-            if (!queued) throw new Exception("host did not retain the job while the printer was offline");
-
-            var deliveredWhileOffline = printer.Received.Count;
-            if (deliveredWhileOffline > 0) throw new Exception("printer received data while it was offline");
-
-            printer.Start(); // printer comes online - the queued job must print now
-
-            var ok = await WaitUntil(() => printer.Received.Count >= 1, TimeSpan.FromSeconds(45));
-            if (!ok) throw new Exception("queued job was not delivered after the printer came back");
-            if (!printer.Received.First().SequenceEqual(payload)) throw new Exception("payload altered in transit");
-
-            Pass("durable queue (printer offline -> queued -> delivered after recovery)");
-        }
-        catch (Exception ex) { Fail("durable queue: " + ex.Message); }
-        finally
-        {
-            if (client != null) await client.StopAsync();
-            if (host != null) await host.StopAsync();
-            relay?.Stop();
-            printer.Dispose();
-        }
-    }
-
-    // ------------------------------------------------------------- helpers
-
-    private static byte[] MakeZpl(int index, int size)
-    {
-        var head = Encoding.ASCII.GetBytes(
-            $"^XA\n^CI28\n^PW1200\n^LL1800\n^FO60,60^A0N,60,60^FDSELFTEST JOB {index}^FS\n");
-        var tail = Encoding.ASCII.GetBytes(
-            $"^FO60,200^BY3^BCN,140,Y,N,N^FDLB{index:D4}{DateTime.Now:HHmmss}^FS\n^XZ\n");
-
-        var pad = Math.Max(0, size - head.Length - tail.Length);
-        var result = new byte[head.Length + pad + tail.Length];
-        head.CopyTo(result, 0);
-        Encoding.ASCII.GetBytes(new string('X', pad)).CopyTo(result, head.Length);
-        tail.CopyTo(result, head.Length + pad);
-        return result;
-    }
-
-    private static int FreePort()
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
-    }
-
-    private static async Task<bool> WaitUntil(Func<bool> condition, TimeSpan timeout)
-    {
-        var sw = Stopwatch.StartNew();
-        while (sw.Elapsed < timeout)
-        {
-            if (condition()) return true;
-            await Task.Delay(100);
-        }
-        return condition();
+        if (!condition) throw new Exception(message);
     }
 
     private static void Pass(string name)
@@ -399,66 +197,5 @@ internal static class SelfTest
     {
         _failures++;
         Console.WriteLine($"  FAIL  {name}");
-    }
-
-    private sealed class FakePrinter : IDisposable
-    {
-        private readonly int _port;
-        private TcpListener? _listener;
-        private CancellationTokenSource? _cts;
-        public ConcurrentQueue<byte[]> Received { get; } = new();
-        public int Port => _port;
-
-        public FakePrinter()
-        {
-            var probe = new TcpListener(IPAddress.Loopback, 0);
-            probe.Start();
-            _port = ((IPEndPoint)probe.LocalEndpoint).Port;
-            probe.Stop();
-        }
-
-        public void Start()
-        {
-            if (_listener != null) return;
-            _cts = new CancellationTokenSource();
-            _listener = new TcpListener(IPAddress.Loopback, _port);
-            _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            _listener.Start();
-            _ = Task.Run(AcceptLoopAsync);
-        }
-
-        private async Task AcceptLoopAsync()
-        {
-            var ct = _cts!.Token;
-            while (!ct.IsCancellationRequested)
-            {
-                TcpClient client;
-                try { client = await _listener!.AcceptTcpClientAsync(ct); }
-                catch { break; }
-
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        using (client)
-                        using (var ms = new MemoryStream())
-                        {
-                            await client.GetStream().CopyToAsync(ms, ct);
-                            if (ms.Length > 0) Received.Enqueue(ms.ToArray());
-                        }
-                    }
-                    catch { }
-                }, ct);
-            }
-        }
-
-        public void Dispose()
-        {
-            try { _cts?.Cancel(); } catch { }
-            try { _listener?.Stop(); } catch { }
-            _listener = null;
-            _cts?.Dispose();
-            _cts = null;
-        }
     }
 }

@@ -137,7 +137,7 @@ if ($RemoveData) {
 } else {
     Write-Host ''
     Write-Host "  Data kept in $dataDir" -ForegroundColor DarkGray
-    Write-Host '  (settings, pairing, queued jobs and logs - delete the folder to start fresh)' -ForegroundColor DarkGray
+    Write-Host '  (settings, queued jobs and logs - delete the folder to start fresh)' -ForegroundColor DarkGray
 }
 
 Write-Host ''
