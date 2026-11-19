@@ -121,6 +121,6 @@ Environment:
 
     private static string GetVersion()
     {
-        try { return typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "1.1.0"; } catch { return "1.1.0"; }
+        try { return typeof(Program).Assembly.GetName().Version?.ToString(3) ?? "1.1.1"; } catch { return "1.1.1"; }
     }
 }

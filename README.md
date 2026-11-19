@@ -1,6 +1,6 @@
 ﻿# Online Printer
 
-Online Printer v1.1.0 is an all-in-one label print server with a web UI plus a Windows client.
+Online Printer v1.1.1 is an all-in-one label print server with a web UI plus a Windows client.
 
 - **Online Printer Server (Linux/systemd, Docker, or console)**: admin login/setup, client approval, printer configuration (manual IP:port, probe/scan/test), durable queue, and direct printing to a network printer over TCP/9100.
 - **Online Printer Client (Windows)**: installed by a single setup EXE. It installs a local virtual printer named `Online Printer`; any app can print to it, the client captures jobs, uploads them to the approved server, and the server forwards them directly to the configured network printer.
@@ -22,7 +22,7 @@ Windows app -> local "Online Printer" virtual printer -> Online Printer Client
 - **Generic printer/profile fields** (name/size/DPI/orientation/media/method/darkness/speed/driver hint/print language) are stored on the server and pushed to approved clients.
 - **Automatic printer identity detection:** when a printer host/port is saved or tested, the server queries the printer over TCP/9100 (ZPL/EPL/TSPL/CPCL/ESC-POS/PJL identity commands) and fills in **make**, **model**, print language, and a suggested Windows driver hint. The web UI also has a **Detect printer** button. Approved clients receive these fields and automatically pick a matching installed Windows driver by make/model/language and install/repair the `Online Printer` queue. Detection is best-effort and never overwrites admin-entered values.
 
-## Important limitations (v1.1.0)
+## Important limitations (v1.1.1)
 
 - **No print-format conversion is bundled.** Jobs are forwarded as raw bytes over TCP/9100.
   - **Rejected:** empty jobs and Windows-rendered spool formats (`EMF`, `XPS`) with actionable errors.
@@ -45,7 +45,7 @@ curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master
 Install specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo LABELBRIDGE_VERSION=v1.1.0 bash
+curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo LABELBRIDGE_VERSION=v1.1.1 bash
 ```
 
 Install/runtime contract (kept for upgrades):
@@ -64,7 +64,7 @@ Docker assets are in [`docker/`](docker/). The container runs the server binary 
 
 ## Windows client installation and flow
 
-1. Download `OnlinePrinterClient-1.1.0-win-x64.zip` (or `OnlinePrinterClient-Setup.exe`) from the release and run **`OnlinePrinterClient-Setup.exe`**. It is a single EXE installer; UAC approval is requested automatically. No PowerShell, CMD, or batch files are needed.
+1. Download `OnlinePrinterClient-1.1.1-win-x64.zip` (or `OnlinePrinterClient-Setup.exe`) from the release and run **`OnlinePrinterClient-Setup.exe`**. It is a single EXE installer; UAC approval is requested automatically. No PowerShell, CMD, or batch files are needed.
 2. Start **Online Printer Client** from the Start menu or desktop shortcut.
 3. **Server & Approval** tab: set server base URL and device name, then **Request / Register**.
 4. Approve the client in the server web UI (**Clients** tab).
@@ -108,18 +108,18 @@ dotnet build LabelBridge/LabelBridge.sln -c Release -m:1
 dotnet exec LabelBridge/src/LabelBridge.Windows/bin/Release/net8.0-windows/OnlinePrinter.Client.dll --selftest
 
 # Package Windows client setup EXE + Linux server asset (developer build tooling)
-powershell -ExecutionPolicy Bypass -File LabelBridge/installer/Build.ps1 -Version 1.1.0
+powershell -ExecutionPolicy Bypass -File LabelBridge/installer/Build.ps1 -Version 1.1.1
 ```
 
 `installer/Build.ps1` produces `dist/OnlinePrinterClient-Setup.exe`, `dist/OnlinePrinterClient-<version>-win-x64.zip`, and (unless skipped) `dist/labelbridge-relay-linux-x64.tar.gz`.
 
 ## Releases
 
-- Version: `1.1.0`
+- Version: `1.1.1`
 - Release assets:
   - `labelbridge-relay-linux-x64.tar.gz` (Linux server install & server auto-update)
   - `OnlinePrinterClient-Setup.exe` (single EXE Windows installer)
-  - `OnlinePrinterClient-1.1.0-win-x64.zip` (same setup EXE, used by client auto-update)
+  - `OnlinePrinterClient-1.1.1-win-x64.zip` (same setup EXE, used by client auto-update)
   - `SHA256SUMS.txt` (checksums)
 
 ## Repository layout

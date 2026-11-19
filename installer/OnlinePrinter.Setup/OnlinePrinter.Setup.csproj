@@ -10,8 +10,9 @@
     <AssemblyName>OnlinePrinterClient-Setup</AssemblyName>
     <RootNamespace>OnlinePrinter.Setup</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.1.0</Version>
-    <FileVersion>1.1.0.0</FileVersion>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Version>1.1.1</Version>
+    <FileVersion>1.1.1.1</FileVersion>
     <Company>Online Printer</Company>
     <Product>Online Printer Client Setup</Product>
     <Description>Single-file installer for Online Printer Client.</Description>

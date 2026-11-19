@@ -12,7 +12,7 @@ namespace LabelBridge.Services;
 /// </summary>
 public sealed class ClientAgent : IAsyncDisposable
 {
-    public const string AppVersion = "1.1.0";
+    public const string AppVersion = "1.1.1";
 
     private readonly AppSettings _settings;
     private readonly JobStore _queue;
