@@ -54,8 +54,7 @@ internal sealed class Card : Panel
 
     public Card(string? title = null)
     {
-        AutoSize = true;
-        AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        AutoSize = false;
         BackColor = Theme.Card;
         Padding = new Padding(18, 15, 18, 14);
         Margin = new Padding(0, 0, 0, 14);
@@ -65,9 +64,8 @@ internal sealed class Card : Panel
         {
             ColumnCount = 1,
             RowCount = 0,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Dock = DockStyle.Top,
+            AutoSize = false,
+            Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
             Margin = new Padding(0)
         };
@@ -78,6 +76,13 @@ internal sealed class Card : Panel
     }
 
     public TableLayoutPanel Rows => _rows;
+
+    /// <summary>Height needed to show all rows when the card is given a specific outer width.</summary>
+    public int MeasureHeight(int outerWidth)
+    {
+        int innerWidth = Math.Max(200, outerWidth - Padding.Horizontal);
+        return _rows.GetPreferredSize(new Size(innerWidth, 0)).Height + Padding.Vertical + 2;
+    }
 
     public void AddTitle(string title)
     {
@@ -197,13 +202,11 @@ internal sealed class Pill : Control
 }
 
 /// <summary>Vertically stacked, auto-scrolling page body.</summary>
-internal sealed class CardsStack : FlowLayoutPanel
+internal sealed class CardsStack : Panel
 {
     public CardsStack()
     {
         Dock = DockStyle.Fill;
-        FlowDirection = FlowDirection.TopDown;
-        WrapContents = false;
         AutoScroll = true;
         BackColor = Theme.Bg;
         Padding = new Padding(18, 16, 18, 18);
@@ -211,24 +214,35 @@ internal sealed class CardsStack : FlowLayoutPanel
 
     public void Add(Control control)
     {
+        control.Dock = DockStyle.Top;
         Controls.Add(control);
-        SyncWidths();
+        // WinForms stacks Top-docked controls from the end of the collection upward,
+        // so move the newest control to the front to keep insertion order top-to-bottom.
+        Controls.SetChildIndex(control, 0);
+        SyncSizes();
     }
 
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        SyncWidths();
+        SyncSizes();
     }
 
-    private void SyncWidths()
+    private void SyncSizes()
     {
         int scroll = VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0;
         int width = ClientSize.Width - Padding.Horizontal - scroll - 2;
         if (width < 200) return;
 
         foreach (Control control in Controls)
+        {
             if (control.Width != width) control.Width = width;
+            if (control is Card card)
+            {
+                int height = card.MeasureHeight(width);
+                if (height > 0 && card.Height != height) card.Height = height;
+            }
+        }
     }
 }
 
