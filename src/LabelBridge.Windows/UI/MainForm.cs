@@ -18,7 +18,7 @@ internal sealed class MainForm : Form
     private TabPage _tabOverview = null!, _tabServer = null!, _tabPrinter = null!, _tabJobs = null!, _tabLog = null!;
 
     private StatCard _statConn = null!, _statPrinter = null!, _statQueue = null!, _statSent = null!;
-    private Label _lblStatus = null!, _lblProfile = null!;
+    private Label _lblStatus = null!, _lblProfile = null!, _lblUpdate = null!;
     private TextBox _txtServerUrl = null!, _txtDevice = null!;
     private Button _btnRegister = null!, _btnRefresh = null!, _btnOpenServer = null!, _btnCheckUpdates = null!;
     private Label _lblReq = null!;
@@ -39,6 +39,7 @@ internal sealed class MainForm : Form
         _agent.StatusChanged += s => BeginInvokeSafe(() => { _lblStatus.Text = s; AppendLog(s); RefreshUi(); });
         _agent.JobEvent += (j, m) => BeginInvokeSafe(() => { AppendLog($"{m}: {j.Name} ({j.Size} bytes)"); RefreshUi(); });
         _agent.ConfigUpdated += cfg => BeginInvokeSafe(() => { _lastConfig = cfg; ApplyServerConfig(cfg); RefreshUi(); });
+        _agent.ClientUpdateInfo += (msg, hasUpdate) => BeginInvokeSafe(() => HandleClientUpdateInfo(msg, hasUpdate));
 
         Text = "Online Printer Client";
         Icon = IconFactory.AppIcon(32);
@@ -60,6 +61,7 @@ internal sealed class MainForm : Form
         Load += async (_, _) =>
         {
             try { AutoStart.Set(_settings.AutoStart); } catch { }
+            _ = Task.Run(async () => { try { await _agent.CheckForUpdatesDetailedAsync(); } catch { } });
             if (_settings.AutoStartBridge) await StartAgentAsync();
         };
     }
@@ -97,9 +99,12 @@ internal sealed class MainForm : Form
         var card = new Card("Status");
         _lblStatus = Ui.Text("Stopped", muted:false, font: Theme.BodyMedium);
         _lblProfile = Ui.Wrap("No server profile loaded yet.");
+        _lblUpdate = Ui.Wrap("Client update: checking...");
+        _lblUpdate.ForeColor = Theme.Muted;
         var hint = Ui.Wrap("Flow: connect to the Online Printer Server -> request approval -> admin approves in web UI -> client downloads printer/profile/driver info -> install/repair the 'Online Printer' virtual printer -> print PDFs from any app to it; jobs upload to server and print directly on the network printer.");
         card.AddRow(_lblStatus);
         card.AddRow(_lblProfile);
+        card.AddRow(_lblUpdate);
         card.AddRow(new Panel{Height=8});
         card.AddRow(hint);
         stack.Add(stats);
@@ -436,6 +441,50 @@ internal sealed class MainForm : Form
             _statPrinter.Set(string.IsNullOrWhiteSpace(_settings.LastServerPrinterName) ? "No profile" : _settings.LastServerPrinterName);
             if (_agent.IsRunning) _pill.Set(approved?"Running (approved)":(_settings.ClientToken=="" && !string.IsNullOrWhiteSpace(_settings.ClientRequestId)?"Running (pending approval)":"Running"), approved?Theme.GreenSoft:Theme.AmberSoft, approved?Theme.Green:Theme.Amber);
             UpdateReqLabel();
+            UpdateUpdateLabel();
+        }
+        catch { }
+    }
+
+    private bool _clientUpdatePromptShown;
+
+    private void HandleClientUpdateInfo(string message, bool hasUpdate)
+    {
+        try
+        {
+            UpdateUpdateLabel(message, hasUpdate);
+            if (hasUpdate && !_clientUpdatePromptShown)
+            {
+                _clientUpdatePromptShown = true;
+                _tray.ShowBalloonTip(5000, "Online Printer Client", "A new client update is available. Open Settings/Server & Approval and click 'Check for updates' to install it.", ToolTipIcon.Info);
+            }
+        }
+        catch { }
+    }
+
+    private void UpdateUpdateLabel(string? message = null, bool? hasUpdate = null)
+    {
+        try
+        {
+            if (_lblUpdate == null) return;
+            var has = hasUpdate ?? _agent.ClientUpdateAvailable;
+            var msg = message;
+            if (string.IsNullOrWhiteSpace(msg))
+            {
+                var latest = _agent.LatestVersion;
+                msg = string.IsNullOrWhiteSpace(latest)
+                    ? $"Client v{ClientAgent.AppVersion} (update not checked yet)"
+                    : has
+                        ? $"Client v{ClientAgent.AppVersion} · Update available: {latest}"
+                        : $"Client v{ClientAgent.AppVersion} · Up to date ({latest})";
+            }
+            else if (!msg.StartsWith("Client", StringComparison.OrdinalIgnoreCase))
+            {
+                msg = $"Client v{ClientAgent.AppVersion}: {msg}";
+            }
+
+            _lblUpdate.Text = msg;
+            _lblUpdate.ForeColor = has ? Theme.Amber : (msg.Contains("failed", StringComparison.OrdinalIgnoreCase) ? Color.FromArgb(200, 80, 80) : Theme.Muted);
         }
         catch { }
     }

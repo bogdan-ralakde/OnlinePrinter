@@ -81,7 +81,7 @@ async function api(path, opts={}){
   const r=await fetch(path, opts); const ct=r.headers.get('content-type')||''; let data=null;
   if(ct.includes('application/json')){ try{data=await r.json();}catch{data=null;} } else { try{data=await r.text();}catch{data=null;} }
   if(r.status===401){S.token=''; localStorage.removeItem('lb_token'); showLogin(); throw new Error((data&&data.error)||'Unauthorized');}
-  if(!r.ok){ throw new Error((data&&data.error)||data||('HTTP '+r.status)); }
+  if(!r.ok){ const e=new Error((data&&data.error)||(typeof data==='string'?data:null)||('HTTP '+r.status)); e.data=data; e.status=r.status; throw e; }
   return data;
 }
 function esc(s){return (s??'').toString().replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]))}
@@ -129,9 +129,14 @@ function pill(status){const s=(status||'').toLowerCase(); const cls=s==='approve
 async function loadDash(){ const [p,clients,jobs,upd] = await Promise.all([api('/api/admin/printer'), api('/api/admin/clients'), api('/api/admin/jobs'), api('/api/admin/update-info').catch(()=>({}))]);
   const pending=clients.filter(c=>c.Status==='Pending').length; const approved=clients.filter(c=>c.Status==='Approved').length;
   const prof=[p.Profile?.Make,p.Profile?.Model,p.Profile?.Width,p.Profile?.Height,p.Profile?.Dpi&& (p.Profile.Dpi+'dpi'),p.Profile?.Orientation,p.Profile?.PrintLanguage].filter(Boolean).join(' · ');
+  const updMsg = upd.hasUpdate ? `Update available: ${upd.latest||''}` : (upd.ok===false ? 'Update check unavailable' : 'Up to date');
+  const updPill = upd.hasUpdate ? 'pending' : (upd.ok===false ? 'pending' : 'ok');
+  const updActions = upd.hasUpdate
+    ? `<div class="row" style="margin-top:10px"><button onclick="showTab('settings')">Open update</button>${upd.url?`<a href="${esc(upd.url)}" target="_blank" rel="noopener"><button>Release page</button></a>`:''}</div>`
+    : (upd.url?`<div class="small muted" style="margin-top:8px"><a href="${esc(upd.url)}" target="_blank" rel="noopener">Release page</a></div>`:'');
   document.getElementById('tab-dashboard').innerHTML=`
   <div class="grid">
-    <div class="card"><h2>Server</h2><div class="muted small">Version ${esc(upd.current||'')}</div><div style="margin-top:8px">${upd.hasUpdate?`<span class="pill pending">Update available: ${esc(upd.latest||'')}</span>`:`<span class="pill ok">${upd.ok===false?'Update check unavailable':'Up to date'}</span>`}</div><div class="small muted" style="margin-top:8px">${esc(upd.url||'')}</div></div>
+    <div class="card"><h2>Server</h2><div class="muted small">Current: ${esc(upd.current||'')} ${upd.latest?`· Latest: ${esc(upd.latest)}`:''}</div><div style="margin-top:8px"><span class="pill ${updPill}">${esc(updMsg)}</span></div>${upd.message?`<div class="small muted" style="margin-top:8px">${esc(upd.message)}</div>`:''}${updActions}</div>
     <div class="card"><h2>Printer</h2><div><b>${esc(p.Name||'Printer')}</b></div><div class="muted">${esc(p.Host||'(not set)')}:${esc(p.Port||9100)} ${p.Enabled?'(enabled)':'(disabled)'}</div><div class="small muted">Profile: ${esc(prof||'(not set)')}</div></div>
     <div class="card"><h2>Clients</h2><div>Approved: <b>${approved}</b></div><div>Pending: <b>${pending}</b></div></div>
     <div class="card"><h2>Jobs</h2><div>Queued/Retrying: <b>${jobs.length}</b></div><div class="small muted">Server forwards jobs directly to the configured network printer.</div></div>
@@ -212,11 +217,21 @@ async function selectDriver(id){ try{ await api('/api/admin/drivers/select',{met
 async function delDriver(id){ if(!confirm('Delete driver package?')) return; try{ await api('/api/admin/drivers/'+id,{method:'DELETE'}); await loadDrivers(); }catch(e){msg(e.message,true)} }
 
 async function loadSettings(){ const me=await api('/api/auth/me'); const info=await api('/api/admin/client-bundle-info'); const upd=await api('/api/admin/update-info').catch(()=>({ok:false,error:'unavailable'}));
-  const updHtml = upd && upd.ok ? `<div class="small"><b>Current:</b> ${esc(upd.current||'')} &nbsp; <b>Latest:</b> ${esc(upd.latest||'?')} ${upd.hasUpdate?'<span class="pill pending">Update available</span>':'<span class="pill approved">Up to date</span>'}</div>
-    ${upd.url?`<div class="small" style="margin-top:6px"><a href="${esc(upd.url)}" target="_blank" rel="noopener">Release page</a></div>`:''}
-    <div class="row" style="margin-top:10px"><button onclick="checkUpd()">Refresh</button><button class="primary" onclick="applyUpd()">Download & apply server update</button></div>
-    <pre id="updOut" class="small" style="margin-top:8px;white-space:pre-wrap">${esc(upd.error||'On Linux/systemd installs, apply will download the latest release asset, verify checksum when available, replace the server binary, and request restart. If permissions prevent in-place update, a manual upgrade command is shown.')}</pre>`
+  const autoApply = upd && upd.autoApplySupported;
+  const updMsg = upd && upd.ok
+    ? `<div class="small"><b>Current:</b> ${esc(upd.current||'')} &nbsp; <b>Latest:</b> ${esc(upd.latest||'?')} ${upd.hasUpdate?'<span class="pill pending">Update available</span>':'<span class="pill ok">Up to date</span>'}</div>
+       ${upd.message?`<div class="small muted" style="margin-top:6px">${esc(upd.message)}</div>`:''}
+       ${upd.url?`<div class="small" style="margin-top:6px"><a href="${esc(upd.url)}" target="_blank" rel="noopener">Release page</a></div>`:''}
+       <div class="row" style="margin-top:10px">
+         <button onclick="checkUpd()">Refresh</button>
+         ${upd.hasUpdate && autoApply ? `<button class="primary" onclick="applyUpd()">Download & apply server update</button>` : ''}
+         ${upd.hasUpdate && !autoApply && upd.url ? `<a href="${esc(upd.url)}" target="_blank" rel="noopener"><button class="primary">Download update</button></a>` : ''}
+       </div>
+       ${upd.hasUpdate && !autoApply ? `<div class="small muted" style="margin-top:8px">Automatic apply is only supported on Linux/systemd installs. Download the release or run the command below on the server.</div>` : ''}
+       ${upd.manual ? `<div class="small muted" style="margin-top:8px">Manual upgrade command:</div><pre id="updManual" class="small" style="margin-top:4px;white-space:pre-wrap">${esc(upd.manual)}</pre>` : ''}
+       <pre id="updOut" class="small" style="margin-top:8px;white-space:pre-wrap">${esc(upd.error||'')}</pre>`
     : `<div class="small muted">Update info unavailable: ${esc(upd&&upd.error||'unknown')}</div><div class="row" style="margin-top:10px"><button onclick="loadSettings()">Retry</button></div>`;
+  const updHtml = updMsg;
   document.getElementById('tab-settings').innerHTML=`<div class="grid">
     <div class="card"><h2>Admin password</h2>
       ${me.mustChange?'<div class="pill pending">Password change recommended</div>':''}
@@ -232,7 +247,7 @@ async function loadSettings(){ const me=await api('/api/auth/me'); const info=aw
   </div>`;
 }
 async function checkUpd(){ try{ await loadSettings(); msg('Update info refreshed.'); }catch(e){msg(e.message,true)} }
-async function applyUpd(){ try{ const out=document.getElementById('updOut'); if(out) out.textContent='Applying update...'; msg('Applying server update...'); const r=await api('/api/admin/update-apply',{method:'POST',body:{}}); if(out) out.textContent=(r.message||'') + (r.details?'\n\n'+JSON.stringify(r.details,null,2):''); msg(r.message||'Update requested.'); setTimeout(()=>loadSettings().catch(()=>{}), 4000); }catch(e){ const out=document.getElementById('updOut'); if(out) out.textContent=e.message; msg(e.message,true); } }
+async function applyUpd(){ try{ const out=document.getElementById('updOut'); if(out) out.textContent='Applying update...'; msg('Applying server update...'); const r=await api('/api/admin/update-apply',{method:'POST',body:{}}); if(out) out.textContent=(r.message||'') + (r.details?'\n\n'+JSON.stringify(r.details,null,2):''); msg(r.message||'Update requested.'); setTimeout(()=>loadSettings().catch(()=>{}), 4000); }catch(e){ const out=document.getElementById('updOut'); const d=e.data||{}; const extra = d.details ? ('\n\n'+JSON.stringify(d.details,null,2)) : (d.manual?('\n\nManual:\n'+d.manual):''); if(out) out.textContent=(e.message||String(e))+extra; msg(e.message,true); await loadSettings().catch(()=>{}); } }
 async function changePw(){ try{ await api('/api/admin/change-password',{method:'POST',body:{current:v('curPw'),next:v('newPw')}}); msg('Password changed.'); S.me=await api('/api/auth/me'); await loadSettings(); }catch(e){msg(e.message,true)} }
 
 init();

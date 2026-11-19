@@ -16,7 +16,7 @@
     batch install scripts for end users.
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File installer\Build.ps1 -Version 1.1.1
+    powershell -ExecutionPolicy Bypass -File installer\Build.ps1 -Version 1.1.2
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File installer\Build.ps1 -SkipLinuxRelay -SkipZip
@@ -25,7 +25,7 @@
 param(
     [string] $Configuration = 'Release',
     [string] $Runtime = 'win-x64',
-    [string] $Version = '1.1.1',
+    [string] $Version = '1.1.2',
     [switch] $SkipLinuxRelay,
     [switch] $SkipZip,
     [switch] $FrameworkDependent

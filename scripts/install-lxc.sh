@@ -9,7 +9,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo bash
 #
 # Install a specific release:
-#   curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo LABELBRIDGE_VERSION=v1.1.1 bash
+#   curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo LABELBRIDGE_VERSION=v1.1.2 bash
 #
 # Local install (checkout or extracted bundle):
 #   sudo bash scripts/install-linux.sh
@@ -89,7 +89,7 @@ rand_secret() {
 get_env_value() { local k="$1" f="$2"; [[ -f "$f" ]] && grep -E "^${k}=" "$f" | tail -n1 | cut -d= -f2- || true; }
 detect_ip() {
   local ip=""; if have_cmd hostname; then ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"; fi
-  if [[ -z "$ip" ]] && have_cmd ip; then ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}' || true)"; fi
+  if [[ -z "$ip" ]] && have_cmd ip; then ip="$(ip -4 route get 1.1.2.0 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}' || true)"; fi
   printf '%s' "${ip:-<this-host>}"
 }
 

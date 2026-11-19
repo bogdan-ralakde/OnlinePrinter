@@ -12,7 +12,7 @@ namespace LabelBridge.Services;
 /// </summary>
 public sealed class ClientAgent : IAsyncDisposable
 {
-    public const string AppVersion = "1.1.1";
+    public const string AppVersion = "1.1.2";
 
     private readonly AppSettings _settings;
     private readonly JobStore _queue;
@@ -27,6 +27,15 @@ public sealed class ClientAgent : IAsyncDisposable
     public event Action<string>? StatusChanged;
     public event Action<PrintJob, string>? JobEvent; // job, message
     public event Action<ServerClientConfig>? ConfigUpdated;
+
+    private string _latestVersion = "";
+    private bool _clientUpdateAvailable;
+    private DateTime _lastUpdateCheckUtc = DateTime.MinValue;
+    private readonly object _updateGate = new();
+
+    public string LatestVersion { get { lock (_updateGate) return _latestVersion; } }
+    public bool ClientUpdateAvailable { get { lock (_updateGate) return _clientUpdateAvailable; } }
+    public event Action<string, bool>? ClientUpdateInfo; // (message, hasUpdate)
 
     public ClientAgent(AppSettings settings)
     {
@@ -52,6 +61,7 @@ public sealed class ClientAgent : IAsyncDisposable
         _tasks.Add(Task.Run(() => _capture.RunAsync(ct), ct));
         _tasks.Add(Task.Run(() => UploadLoopAsync(ct), ct));
         _tasks.Add(Task.Run(() => PollLoopAsync(ct), ct));
+        _tasks.Add(Task.Run(() => ClientUpdateLoopAsync(ct), ct));
 
         IsRunning = true;
         SetStatus("Client started");
@@ -219,9 +229,36 @@ public sealed class ClientAgent : IAsyncDisposable
         using var api = new ServerApiClient("https://github.com");
         var repo = "bogdan-ralakde/OnlinePrinter";
         var (ok, cur, latest, url, has, err, assets) = await api.CheckUpdateAsync(repo, ct);
-        if (!ok) return (false, err ?? "Update check failed", false, Array.Empty<GitHubReleaseAsset>());
-        if (has) return (true, $"Update available: {latest} (current {cur}). {url}", true, assets);
-        return (true, $"Up to date ({cur}). Latest {latest}. {url}", false, assets);
+
+        var message = !ok
+            ? $"Client update check failed: {(err ?? "unknown error")}"
+            : has
+                ? $"Client update available: {latest} (current {cur}). {url}"
+                : $"Client up to date ({cur}). Latest {latest}. {url}";
+
+        lock (_updateGate)
+        {
+            if (ok && !string.IsNullOrWhiteSpace(latest)) _latestVersion = latest;
+            _clientUpdateAvailable = ok && has;
+            _lastUpdateCheckUtc = DateTime.UtcNow;
+        }
+        try { ClientUpdateInfo?.Invoke(message, ok && has); } catch { }
+
+        if (!ok) return (false, message, false, Array.Empty<GitHubReleaseAsset>());
+        return (true, message, has, assets);
+    }
+
+    private async Task ClientUpdateLoopAsync(CancellationToken ct)
+    {
+        try { await Task.Delay(TimeSpan.FromSeconds(4), ct); } catch { return; }
+        while (!ct.IsCancellationRequested)
+        {
+            try { await CheckForUpdatesDetailedAsync(ct); }
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex) { Log.Debug("Client update check: " + ex.Message); }
+
+            try { await Task.Delay(TimeSpan.FromHours(6), ct); } catch { break; }
+        }
     }
 
     public async Task<(bool ok, string message)> DownloadAndApplyClientUpdateAsync(CancellationToken ct = default)

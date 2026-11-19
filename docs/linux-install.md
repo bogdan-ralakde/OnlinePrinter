@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master
 Install a specific release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo LABELBRIDGE_VERSION=v1.1.1 bash
+curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo LABELBRIDGE_VERSION=v1.1.2 bash
 ```
 
 `scripts/install-lxc.sh` is kept as an alias for older links.

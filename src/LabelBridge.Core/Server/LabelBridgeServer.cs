@@ -518,7 +518,7 @@ public sealed class LabelBridgeServer : IDisposable
         }
         catch (Exception ex)
         {
-            await WriteJson(res, 200, new { ok = false, current = _config.CurrentVersion, error = ex.Message });
+            await WriteJson(res, 200, new { ok = false, current = _config.CurrentVersion, error = ex.Message, autoApplySupported = OperatingSystem.IsLinux(), manual = ManualUpgradeCommand(_config.CurrentVersion ?? "latest") });
         }
     }
 
@@ -543,16 +543,27 @@ public sealed class LabelBridgeServer : IDisposable
                 });
             }
         }
-        var hasUpdate = !string.IsNullOrEmpty(tag) && !SameVersion(tag, _config.CurrentVersion);
-        return new { ok = true, current = _config.CurrentVersion, latest = tag, url = htmlUrl, hasUpdate, assets };
+        var hasUpdate = IsNewerVersion(tag, _config.CurrentVersion);
+        var autoApplySupported = OperatingSystem.IsLinux();
+        var manual = string.IsNullOrWhiteSpace(tag) ? "" : ManualUpgradeCommand(tag);
+        var message = !hasUpdate
+            ? "Up to date."
+            : autoApplySupported
+                ? "Update available. You can download and apply it from this page."
+                : "Update available. Download the latest release or run the manual upgrade command on the server.";
+        return new { ok = true, current = _config.CurrentVersion, latest = tag, url = htmlUrl, hasUpdate, assets, autoApplySupported, manual, message };
     }
 
-    private static bool SameVersion(string a, string b)
+    private static string NormalizeVersion(string? v) => (v ?? "").Trim().TrimStart('v', 'V');
+
+    private static bool IsNewerVersion(string? latest, string? current)
     {
-        static string N(string? v) => (v ?? "").Trim().TrimStart('v', 'V');
-        var aa = N(a); var bb = N(b);
-        if (Version.TryParse(aa, out var va) && Version.TryParse(bb, out var vb)) return va == vb;
-        return string.Equals(aa, bb, StringComparison.OrdinalIgnoreCase);
+        var a = NormalizeVersion(latest);
+        var b = NormalizeVersion(current);
+        if (string.IsNullOrEmpty(a)) return false;
+        if (string.IsNullOrEmpty(b)) return true;
+        if (Version.TryParse(a, out var va) && Version.TryParse(b, out var vb)) return va > vb;
+        return !string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
     }
 
     private static HttpClient CreateGitHubHttp()
@@ -566,7 +577,8 @@ public sealed class LabelBridgeServer : IDisposable
     {
         if (!OperatingSystem.IsLinux())
         {
-            await WriteJson(res, 400, new { ok = false, error = "Server auto-apply is supported only on Linux/systemd installs. Download the latest release and update manually." });
+            var info = await FetchReleaseInfoAsync();
+            await WriteJson(res, 400, new { ok = false, error = "Server auto-apply is supported only on Linux/systemd installs. Download the latest release or run the manual upgrade command on the server.", details = info });
             return;
         }
         try

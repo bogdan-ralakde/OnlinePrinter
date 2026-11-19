@@ -15,7 +15,7 @@ public sealed class ServerConfig
     public int MaxPayloadBytes { get; set; } = 128 * 1024 * 1024;
     public int RetentionHours { get; set; } = 168;
     public string Repo { get; set; } = "bogdan-ralakde/OnlinePrinter";
-    public string CurrentVersion { get; set; } = "1.1.1";
+    public string CurrentVersion { get; set; } = "1.1.2";
 }
 
 public sealed class AdminRecord

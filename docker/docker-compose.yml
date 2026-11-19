@@ -13,7 +13,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: labelbridge/server:1.1.1
+    image: labelbridge/server:1.1.2
     container_name: labelbridge-server
     restart: unless-stopped
 
@@ -26,7 +26,7 @@ services:
       LB_DATA: "/data"
       LB_ADMIN_SECRET: "${LB_ADMIN_SECRET:?create a .env file with LB_ADMIN_SECRET=...}"
       LB_REPO: "${LB_REPO:-bogdan-ralakde/OnlinePrinter}"
-      LB_VERSION: "${LB_VERSION:-1.1.1}"
+      LB_VERSION: "${LB_VERSION:-1.1.2}"
       LB_RETENTION_HOURS: "${LB_RETENTION_HOURS:-168}"
       LB_MAX_MB: "${LB_MAX_MB:-128}"
       LB_MAX_JOBS: "${LB_MAX_JOBS:-2000}"

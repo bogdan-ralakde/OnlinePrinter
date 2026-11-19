@@ -11,8 +11,8 @@
     <RootNamespace>OnlinePrinter.Setup</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>1.1.1</Version>
-    <FileVersion>1.1.1.1</FileVersion>
+    <Version>1.1.2</Version>
+    <FileVersion>1.1.2.0</FileVersion>
     <Company>Online Printer</Company>
     <Product>Online Printer Client Setup</Product>
     <Description>Single-file installer for Online Printer Client.</Description>
