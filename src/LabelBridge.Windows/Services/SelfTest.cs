@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using LabelBridge.Core;
 using LabelBridge.Core.Server;
 
@@ -16,7 +16,7 @@ internal static class SelfTest
     public static int Run(string[] args)
     {
         Log.Minimum = LogLevel.Warn;
-        Console.WriteLine("LabelBridge self-test (server + Windows client)");
+        Console.WriteLine("Online Printer self-test (server + Windows client)");
         Console.WriteLine("================================");
 
         var root = Path.Combine(Path.GetTempPath(), "labelbridge-selftest-" + Guid.NewGuid().ToString("N")[..8]);
@@ -99,12 +99,15 @@ internal static class SelfTest
         {
             var dir = Path.Combine(root, "server");
             var store = new ServerStore(dir);
-            store.EnsureAdmin("init-secret");
-            Expect(!store.State.SetupComplete, "initial admin requires password change/setup by default for generated flow");
-            var (ok, token, err) = store.Login("admin", "init-secret");
-            Expect(ok && !string.IsNullOrWhiteSpace(token), "admin login with initial secret: " + (err ?? "ok"));
+            store.EnsureAdmin(null);
+            Expect(store.NeedsSetup && !store.State.SetupComplete, "fresh server requires initial admin setup");
+            var (setupOk, setupToken, setupErr) = store.SetupInitialAdmin("admin", "init-secret-123");
+            Expect(setupOk && !string.IsNullOrWhiteSpace(setupToken), "initial admin password created: " + (setupErr ?? "ok"));
+            Expect(!store.NeedsSetup && store.State.SetupComplete, "setup completes admin configuration");
+            var (ok, token, err) = store.Login("admin", "init-secret-123");
+            Expect(ok && !string.IsNullOrWhiteSpace(token), "admin login with created password: " + (err ?? "ok"));
             Expect(store.ValidateSession(token), "session valid");
-            Expect(store.ChangePassword("init-secret", "new-pass-123"), "password changed");
+            Expect(store.ChangePassword("init-secret-123", "new-pass-123"), "password changed");
             var (ok2, token2, _) = store.Login("admin", "new-pass-123");
             Expect(ok2 && !string.IsNullOrWhiteSpace(token2), "login with new password");
 

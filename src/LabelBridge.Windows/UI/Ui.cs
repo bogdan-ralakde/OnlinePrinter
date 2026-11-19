@@ -1,4 +1,4 @@
-using System.Drawing.Drawing2D;
+﻿using System.Drawing.Drawing2D;
 
 namespace LabelBridge.UI;
 
@@ -395,12 +395,12 @@ internal static class Ui
         };
     }
 
-    public static void Info(IWin32Window owner, string message, string title = "LabelBridge") =>
+    public static void Info(IWin32Window owner, string message, string title = "Online Printer Client") =>
         MessageBox.Show(owner, message, title, MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-    public static void Error(IWin32Window owner, string message, string title = "LabelBridge") =>
+    public static void Error(IWin32Window owner, string message, string title = "Online Printer Client") =>
         MessageBox.Show(owner, message, title, MessageBoxButtons.OK, MessageBoxIcon.Error);
 
-    public static bool Confirm(IWin32Window owner, string message, string title = "LabelBridge") =>
+    public static bool Confirm(IWin32Window owner, string message, string title = "Online Printer Client") =>
         MessageBox.Show(owner, message, title, MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
 }

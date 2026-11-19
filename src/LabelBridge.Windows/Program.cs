@@ -16,7 +16,7 @@ internal static class Program
             Log.Error("Fatal error", ex);
             Console.Error.WriteLine("ERROR: " + ex);
             if (Environment.UserInteractive && args.Length == 0)
-                MessageBox.Show(ex.ToString(), "LabelBridge", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(ex.ToString(), "Online Printer Client", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
     }
@@ -33,12 +33,11 @@ internal static class Cli
         switch (cmd)
         {
             case "--help": case "-h": case "/?": PrintHelp(); return 0;
-            case "--version": Console.WriteLine("LabelBridge Client " + ClientAgent.AppVersion); return 0;
+            case "--version": Console.WriteLine("Online Printer Client " + ClientAgent.AppVersion); return 0;
             case "--gui": case "--tray": return RunGui(null);
             case "--selftest": return SelfTest.Run(rest);
             case "--printer-install": return PrinterCli.Install(rest);
             case "--printer-remove": return PrinterCli.Remove(rest);
-            case "--printer-script": return PrinterCli.PrintScript(rest);
             case "--printer-status": return PrinterCli.Status();
             case "--send": return SendFile(rest).GetAwaiter().GetResult();
             case "--paths": PrintPaths(); return 0;
@@ -51,11 +50,11 @@ internal static class Cli
     private static int RunGui(string? _)
     {
         var settings = AppSettings.Load();
-        using var mutex = new Mutex(true, @"Local\LabelBridge.Gui.SingleInstance", out bool isNew);
+        using var mutex = new Mutex(true, @"Local\\OnlinePrinter.Gui.SingleInstance", out bool isNew);
         if (!isNew)
         {
-            MessageBox.Show("LabelBridge is already running.\n\nLook for the LabelBridge icon in the notification area (system tray).",
-                "LabelBridge", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show("Online Printer Client is already running.\n\nLook for the Online Printer Client icon in the notification area (system tray).",
+                "Online Printer Client", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return 0;
         }
 
@@ -75,7 +74,7 @@ internal static class Cli
     private static void ShowCrash(Exception? ex)
     {
         Log.Error("Unhandled UI error", ex ?? new Exception("unknown"));
-        try { MessageBox.Show(ex?.ToString() ?? "Unknown error", "LabelBridge - unexpected error", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
+        try { MessageBox.Show(ex?.ToString() ?? "Unknown error", "Online Printer Client - unexpected error", MessageBoxButtons.OK, MessageBoxIcon.Error); } catch { }
     }
 
     private static async Task<int> SendFile(string[] args)
@@ -92,7 +91,7 @@ internal static class Cli
         }
         var settings = AppSettings.Load();
         server ??= settings.ServerUrl; token ??= settings.ClientToken;
-        if (string.IsNullOrWhiteSpace(file) || !File.Exists(file)) { Console.Error.WriteLine("Usage: LabelBridge --send <file> [--server <url> --token <token>]"); return 2; }
+        if (string.IsNullOrWhiteSpace(file) || !File.Exists(file)) { Console.Error.WriteLine("Usage: OnlinePrinter.Client --send <file> [--server <url> --token <token>]"); return 2; }
         if (string.IsNullOrWhiteSpace(server) || string.IsNullOrWhiteSpace(token)) { Console.Error.WriteLine("Server URL and approved client token are required."); return 2; }
         try
         {
@@ -117,18 +116,17 @@ internal static class Cli
     private static void PrintHelp()
     {
         Console.WriteLine("""
-LabelBridge Client - virtual printer that sends jobs to LabelBridge server
+Online Printer Client - virtual printer that sends jobs to the Online Printer Server
 
-  LabelBridge                         Open client UI
-  LabelBridge --send <file> [--server <url> --token <token>]
+  OnlinePrinter.Client                 Open client UI
+  OnlinePrinter.Client --send <file> [--server <url> --token <token>]
                                       Upload a file as a print job
-  LabelBridge --printer-install [--driver <name>] [--port <n>]
-                                      Create/repair the local 'LabelBridge' virtual printer (admin)
-  LabelBridge --printer-remove        Remove the local virtual printer (admin)
-  LabelBridge --printer-status        Show detected printers/drivers as JSON
-  LabelBridge --printer-script        Print printer install PowerShell script
-  LabelBridge --selftest              Run built-in sanity checks
-  LabelBridge --paths                 Show data folders
+  OnlinePrinter.Client --printer-install [--driver <name>] [--port <n>]
+                                      Create/repair the local 'Online Printer' virtual printer (admin)
+  OnlinePrinter.Client --printer-remove        Remove the local virtual printer (admin)
+  OnlinePrinter.Client --printer-status        Show detected printers/drivers as JSON
+  OnlinePrinter.Client --selftest              Run built-in sanity checks
+  OnlinePrinter.Client --paths                 Show data folders
 """);
     }
 }

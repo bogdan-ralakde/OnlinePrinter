@@ -201,7 +201,7 @@ public sealed class ServerApiClient : IDisposable
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{repo}/releases/latest");
-            req.Headers.UserAgent.ParseAdd("LabelBridgeClient/" + ClientAgent.AppVersion);
+            req.Headers.UserAgent.ParseAdd("OnlinePrinterClient/" + ClientAgent.AppVersion);
             using var res = await _http.SendAsync(req, ct);
             var body = await res.Content.ReadAsStringAsync(ct);
             if (!res.IsSuccessStatusCode) return (false, ClientAgent.AppVersion, null, null, false, $"HTTP {(int)res.StatusCode}", Array.Empty<GitHubReleaseAsset>());
@@ -230,10 +230,15 @@ public sealed class ServerApiClient : IDisposable
     public static GitHubReleaseAsset? SelectWindowsClientAsset(IReadOnlyList<GitHubReleaseAsset> assets)
     {
         if (assets == null || assets.Count == 0) return null;
-        // Prefer full client zip produced by installer/Build.ps1
-        return assets.FirstOrDefault(a => a.Name.Contains("win-x64", StringComparison.OrdinalIgnoreCase) && a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) && a.Name.Contains("LabelBridge", StringComparison.OrdinalIgnoreCase))
+        // Prefer the current Online Printer Client setup package; fall back to older names.
+        return assets.FirstOrDefault(a => a.Name.StartsWith("OnlinePrinterClient-", StringComparison.OrdinalIgnoreCase)
+                                          && a.Name.Contains("win-x64", StringComparison.OrdinalIgnoreCase)
+                                          && a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            ?? assets.FirstOrDefault(a => a.Name.Contains("win-x64", StringComparison.OrdinalIgnoreCase)
+                                          && a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                                          && a.Name.Contains("LabelBridge", StringComparison.OrdinalIgnoreCase))
             ?? assets.FirstOrDefault(a => a.Name.Contains("win", StringComparison.OrdinalIgnoreCase) && a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-            ?? assets.FirstOrDefault(a => a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && a.Name.Contains("LabelBridge", StringComparison.OrdinalIgnoreCase));
+            ?? assets.FirstOrDefault(a => a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && a.Name.Contains("Setup", StringComparison.OrdinalIgnoreCase));
     }
 
     public static GitHubReleaseAsset? SelectChecksumAsset(IReadOnlyList<GitHubReleaseAsset> assets)
@@ -248,7 +253,7 @@ public sealed class ServerApiClient : IDisposable
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            req.Headers.UserAgent.ParseAdd("LabelBridgeClient/" + ClientAgent.AppVersion);
+            req.Headers.UserAgent.ParseAdd("OnlinePrinterClient/" + ClientAgent.AppVersion);
             using var res = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             if (!res.IsSuccessStatusCode) return (false, "", $"HTTP {(int)res.StatusCode}");
             Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
@@ -266,7 +271,7 @@ public sealed class ServerApiClient : IDisposable
             var sumAsset = SelectChecksumAsset(assets);
             if (sumAsset == null || string.IsNullOrWhiteSpace(sumAsset.BrowserDownloadUrl)) return null;
             using var req = new HttpRequestMessage(HttpMethod.Get, sumAsset.BrowserDownloadUrl);
-            req.Headers.UserAgent.ParseAdd("LabelBridgeClient/" + ClientAgent.AppVersion);
+            req.Headers.UserAgent.ParseAdd("OnlinePrinterClient/" + ClientAgent.AppVersion);
             using var res = await _http.SendAsync(req, ct);
             if (!res.IsSuccessStatusCode) return null;
             var text = await res.Content.ReadAsStringAsync(ct);

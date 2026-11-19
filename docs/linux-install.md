@@ -1,6 +1,6 @@
-﻿# Linux installation (LabelBridge server)
+﻿# Linux installation (Online Printer Server)
 
-This installs the **LabelBridge server** on a Linux host (Debian/Ubuntu VM, bare metal, Linux container, etc.) as a `systemd` service. The server should be able to reach the network printer (typically on the same LAN) and can be exposed over the internet behind HTTPS for client access.
+This installs the **Online Printer Server** on a Linux host (Debian/Ubuntu VM, bare metal, Linux container, etc.) as a `systemd` service. The server should be able to reach the network printer (typically on the same LAN) and can be exposed over the internet behind HTTPS for client access.
 
 ## What gets installed
 
@@ -23,6 +23,8 @@ Install a specific release:
 curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo LABELBRIDGE_VERSION=v1.0.0 bash
 ```
 
+`scripts/install-lxc.sh` is kept as an alias for older links.
+
 Local/bundle install:
 
 ```bash
@@ -35,11 +37,11 @@ sudo bash scripts/install-linux.sh --local /path/to/relay-linux-x64
 
 1. Check service: `systemctl status labelbridge-relay` and `curl -s http://127.0.0.1:8080/health`
 2. Open web UI: `http://<server-ip>:8080/`
-3. **Initial admin setup (first run):** open the web UI â€” if no admin password is configured yet, it will prompt you to **create the admin password**.
+3. **Initial admin setup (first run):** open the web UI - if no admin password is configured yet, it will prompt you to **create the admin password**.
    - If run interactively, the install script can prompt you to set the admin password (or you can pre-set `LB_ADMIN_SECRET`); if set, it is stored in `/etc/labelbridge/relay.env` and used as the initial password. If left blank, create the password in the web UI on first run. **Note:** reinstalling/upgrading keeps existing config and data by default, so an already-configured admin password is preserved (no setup prompt). To force first-run setup on a fresh state, reset server data (see troubleshooting).
 4. Configure printer in **Printer** tab (e.g. `192.168.50.25:9100`, profile like Zebra ZD420 300dpi ZPL as applicable), run **Test connection** / **Send test label**, and/or use **Scan**.
 5. (Optional) Upload/select a Windows driver/installer package in **Drivers** so approved clients can download it.
-6. Install/run LabelBridge Windows client, set server URL, submit connection request, approve in **Clients**, then install/repair the local "LabelBridge" virtual printer and print.
+6. Install **Online Printer Client** on Windows: run `OnlinePrinterClient-Setup.exe` from the release, set server URL, submit connection request, approve in **Clients**, then install/repair the local `Online Printer` virtual printer and print.
 
 ## Configure (environment file)
 
@@ -77,15 +79,15 @@ print.example.com {
 Re-run the installer (or install a newer release tag). It stops the service, replaces the binary, keeps `/etc/labelbridge/relay.env` and `/var/lib/labelbridge`, and restarts:
 
 ```bash
-sudo bash install-linux.sh (or install-lxc.sh)
-# or local: sudo bash install-linux.sh (or install-lxc.sh) --local /path/to/LabelBridge.Relay
+curl -fsSL https://raw.githubusercontent.com/bogdan-ralakde/OnlinePrinter/master/scripts/install-linux.sh | sudo bash
+# or local: sudo bash scripts/install-linux.sh --local /path/to/relay-linux-x64
 ```
 
 ## Uninstall
 
 ```bash
-sudo bash install-linux.sh (or install-lxc.sh) --uninstall         # keep config and data
-sudo bash install-linux.sh (or install-lxc.sh) --uninstall --purge # remove everything
+sudo bash scripts/install-linux.sh --uninstall         # keep config and data
+sudo bash scripts/install-linux.sh --uninstall --purge # remove everything
 ```
 
 ## Notes

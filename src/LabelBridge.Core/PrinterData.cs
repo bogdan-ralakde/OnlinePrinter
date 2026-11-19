@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 
 namespace LabelBridge.Core;
 
@@ -82,11 +82,11 @@ public static class PrinterData
         PrinterDataKind.Empty => "Print job was empty.",
         PrinterDataKind.Emf =>
             "Captured Windows-rendered print data (EMF/GDI). A network label printer cannot print this format directly. " +
-            "Configure the local 'LabelBridge' printer to use a driver/profile that outputs the printer's native language " +
+            "Configure the local 'Online Printer' printer to use a driver/profile that outputs the printer's native language " +
             "(e.g. ZPL, EPL, TSPL, CPCL, ESC/POS) or a format the printer accepts (PDF/PostScript), then print again.",
         PrinterDataKind.Xps =>
             "Captured Windows-rendered print data (XPS). A network label printer cannot print this format directly. " +
-            "Configure the local 'LabelBridge' printer to use a driver/profile that outputs the printer's native language " +
+            "Configure the local 'Online Printer' printer to use a driver/profile that outputs the printer's native language " +
             "(e.g. ZPL, EPL, TSPL, CPCL, ESC/POS) or a format the printer accepts (PDF/PostScript), then print again.",
         _ => "Captured print data format is not supported for direct network printing."
     };
@@ -120,7 +120,7 @@ public static class PrinterData
         _ => "raw data"
     };
 
-    /// <summary>Human-readable printable preview (control bytes shown as ·).</summary>
+    /// <summary>Human-readable printable preview (control bytes shown as ?).</summary>
     public static string Preview(byte[] data, int max = 65536)
     {
         var len = Math.Min(data.Length, max);
@@ -135,12 +135,12 @@ public static class PrinterData
                 case 9: sb.Append("    "); break;
                 default:
                     if (b >= 32 && b < 127) sb.Append((char)b);
-                    else if (b == 0) sb.Append('·');
+                    else if (b == 0) sb.Append('?');
                     else sb.Append('.');
                     break;
             }
         }
-        if (data.Length > len) sb.Append($"\n\n… {data.Length - len:N0} more bytes");
+        if (data.Length > len) sb.Append($"\n\n... {data.Length - len:N0} more bytes");
         return sb.ToString();
     }
 
@@ -164,7 +164,7 @@ public static class PrinterData
             }
             sb.AppendLine();
         }
-        if (data.Length > len) sb.AppendLine($"… {data.Length - len:N0} more bytes");
+        if (data.Length > len) sb.AppendLine($"... {data.Length - len:N0} more bytes");
         return sb.ToString();
     }
 

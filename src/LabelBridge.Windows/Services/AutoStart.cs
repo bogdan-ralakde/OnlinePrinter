@@ -1,14 +1,14 @@
-using Microsoft.Win32;
+﻿using Microsoft.Win32;
 
 namespace LabelBridge.Services;
 
 internal static class AutoStart
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "LabelBridge";
+    private const string ValueName = "Online Printer Client";
 
     public static bool IsSupported =>
-        Application.ExecutablePath.EndsWith("LabelBridge.exe", StringComparison.OrdinalIgnoreCase);
+        Application.ExecutablePath.EndsWith("OnlinePrinter.Client.exe", StringComparison.OrdinalIgnoreCase);
 
     public static bool IsEnabled()
     {

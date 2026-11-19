@@ -54,7 +54,7 @@ public sealed class PrintService : IDisposable
     {
         profile ??= new PrinterProfile();
         var lang = (profile.PrintLanguage ?? "").Trim().ToUpperInvariant();
-        var name = string.IsNullOrWhiteSpace(profile.Name) ? "LabelBridge" : profile.Name.Trim();
+        var name = string.IsNullOrWhiteSpace(profile.Name) ? "Online Printer" : profile.Name.Trim();
         var size = string.Join(" x ", new[] { profile.Width, profile.Height }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
         var dpi = string.IsNullOrWhiteSpace(profile.Dpi) ? "" : profile.Dpi + "dpi";
         var meta = string.Join(" ", new[] { size, dpi, profile.Orientation, profile.MediaType, profile.PrintMethod, profile.Darkness, profile.Speed }
@@ -63,33 +63,33 @@ public sealed class PrintService : IDisposable
 
         if (string.IsNullOrEmpty(lang) || lang.Contains("ZPL"))
         {
-            var zpl = $"^XA\n^CI28\n^FO30,30^A0N,50,50^FDLabelBridge Test^FS\n^FO30,100^A0N,30,30^FDProfile: {EscapeZpl(name)}^FS\n^FO30,150^A0N,28,28^FD{EscapeZpl(meta)}^FS\n^FO30,200^A0N,28,28^FD{EscapeZpl(now)}^FS\n^FO30,260^BCN,120,Y,N,N^FDLBTEST^FS\n^XZ\n";
+            var zpl = $"^XA\n^CI28\n^FO30,30^A0N,50,50^FDOnline Printer Test^FS\n^FO30,100^A0N,30,30^FDProfile: {EscapeZpl(name)}^FS\n^FO30,150^A0N,28,28^FD{EscapeZpl(meta)}^FS\n^FO30,200^A0N,28,28^FD{EscapeZpl(now)}^FS\n^FO30,260^BCN,120,Y,N,N^FDOPTEST^FS\n^XZ\n";
             return Encoding.UTF8.GetBytes(zpl);
         }
         if (lang.Contains("EPL"))
         {
-            var epl = $"N\nA30,30,0,4,1,1,N,\"LabelBridge Test\"\nA30,90,0,3,1,1,N,\"Profile: {EscapePlain(name)}\"\nA30,130,0,3,1,1,N,\"{EscapePlain(meta)}\"\nA30,170,0,3,1,1,N,\"{EscapePlain(now)}\"\nB30,220,0,1,2,2,120,B,\"LBTEST\"\nP1\n";
+            var epl = $"N\nA30,30,0,4,1,1,N,\"Online Printer Test\"\nA30,90,0,3,1,1,N,\"Profile: {EscapePlain(name)}\"\nA30,130,0,3,1,1,N,\"{EscapePlain(meta)}\"\nA30,170,0,3,1,1,N,\"{EscapePlain(now)}\"\nB30,220,0,1,2,2,120,B,\"OPTEST\"\nP1\n";
             return Encoding.ASCII.GetBytes(epl);
         }
         if (lang.Contains("TSPL") || lang.Contains("TSC"))
         {
             var w = string.IsNullOrWhiteSpace(profile.Width) ? "100" : profile.Width.Replace("mm","",StringComparison.OrdinalIgnoreCase).Replace("in","",StringComparison.OrdinalIgnoreCase).Trim();
             var h = string.IsNullOrWhiteSpace(profile.Height) ? "60" : profile.Height.Replace("mm","",StringComparison.OrdinalIgnoreCase).Replace("in","",StringComparison.OrdinalIgnoreCase).Trim();
-            var tspl = $"SIZE {w} mm,{h} mm\r\nGAP 2 mm,0 mm\r\nCLS\r\nTEXT 30,30,\"3\",0,1,1,\"LabelBridge Test\"\r\nTEXT 30,80,\"2\",0,1,1,\"Profile: {EscapePlain(name)}\"\r\nTEXT 30,120,\"2\",0,1,1,\"{EscapePlain(meta)}\"\r\nTEXT 30,160,\"2\",0,1,1,\"{EscapePlain(now)}\"\r\nBARCODE 30,210,\"128\",100,1,0,2,2,\"LBTEST\"\r\nPRINT 1\r\n";
+            var tspl = $"SIZE {w} mm,{h} mm\r\nGAP 2 mm,0 mm\r\nCLS\r\nTEXT 30,30,\"3\",0,1,1,\"Online Printer Test\"\r\nTEXT 30,80,\"2\",0,1,1,\"Profile: {EscapePlain(name)}\"\r\nTEXT 30,120,\"2\",0,1,1,\"{EscapePlain(meta)}\"\r\nTEXT 30,160,\"2\",0,1,1,\"{EscapePlain(now)}\"\r\nBARCODE 30,210,\"128\",100,1,0,2,2,\"OPTEST\"\r\nPRINT 1\r\n";
             return Encoding.ASCII.GetBytes(tspl);
         }
         if (lang.Contains("CPCL"))
         {
-            var cpcl = $"! 0 200 200 400 1\r\nTEXT 4 0 30 30 LabelBridge Test\r\nTEXT 2 0 30 80 Profile: {EscapePlain(name)}\r\nTEXT 2 0 30 120 {EscapePlain(meta)}\r\nTEXT 2 0 30 160 {EscapePlain(now)}\r\nBARCODE 128 1 1 80 30 220 LBTEST\r\nFORM\r\nPRINT\r\n";
+            var cpcl = $"! 0 200 200 400 1\r\nTEXT 4 0 30 30 Online Printer Test\r\nTEXT 2 0 30 80 Profile: {EscapePlain(name)}\r\nTEXT 2 0 30 120 {EscapePlain(meta)}\r\nTEXT 2 0 30 160 {EscapePlain(now)}\r\nBARCODE 128 1 1 80 30 220 OPTEST\r\nFORM\r\nPRINT\r\n";
             return Encoding.ASCII.GetBytes(cpcl);
         }
         if (lang.Contains("ESC") || lang.Contains("POS"))
         {
-            var txt = $"\x1B@LabelBridge Test\nProfile: {name}\n{meta}\n{now}\n\n\n\x1DV1"; // init + cut partial
+            var txt = $"\x1B@Online Printer Test\nProfile: {name}\n{meta}\n{now}\n\n\n\x1DV1"; // init + cut partial
             return Encoding.ASCII.GetBytes(txt);
         }
 
-        var plain = $"LabelBridge Test\r\nProfile: {name}\r\n{meta}\r\n{now}\r\n\r\n";
+        var plain = $"Online Printer Test\r\nProfile: {name}\r\n{meta}\r\n{now}\r\n\r\n";
         return Encoding.UTF8.GetBytes(plain);
     }
 

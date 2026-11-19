@@ -1,12 +1,12 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace LabelBridge.Core;
 
 /// <summary>
-/// Client settings for the LabelBridge Windows app: local virtual printer capture
-/// and upload to an approved LabelBridge server.
+/// Client settings for the Online Printer Client: local virtual printer capture
+/// and upload to an approved Online Printer Server.
 /// </summary>
 public sealed class AppSettings
 {
@@ -27,7 +27,7 @@ public sealed class AppSettings
 
     // Local virtual printer capture
     public int CapturePort { get; set; } = 9191;
-    public string VirtualPrinterName { get; set; } = "LabelBridge";
+    public string VirtualPrinterName { get; set; } = "Online Printer";
     public string VirtualPrinterDriver { get; set; } = "ZDesigner ZD420-300dpi ZPL";
 
     // App behavior
@@ -92,7 +92,7 @@ public sealed class AppSettings
         ClientStatus = (ClientStatus ?? "").Trim();
 
         if (CapturePort is < 1024 or > 65535) CapturePort = 9191;
-        if (string.IsNullOrWhiteSpace(VirtualPrinterName)) VirtualPrinterName = "LabelBridge";
+        if (string.IsNullOrWhiteSpace(VirtualPrinterName)) VirtualPrinterName = "Online Printer";
         if (string.IsNullOrWhiteSpace(VirtualPrinterDriver)) VirtualPrinterDriver = "ZDesigner ZD420-300dpi ZPL";
 
         LastServerPrinterName ??= "";

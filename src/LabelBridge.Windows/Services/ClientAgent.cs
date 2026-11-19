@@ -8,7 +8,7 @@ namespace LabelBridge.Services;
 
 /// <summary>
 /// Windows client agent: captures local print jobs, queues them durably, polls
-/// server for approval/config, and uploads jobs to LabelBridge server.
+/// server for approval/config, and uploads jobs to the Online Printer Server.
 /// </summary>
 public sealed class ClientAgent : IAsyncDisposable
 {
@@ -200,7 +200,7 @@ public sealed class ClientAgent : IAsyncDisposable
             else
             {
                 Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
-                return (false, "Downloaded package saved. Extract/install it manually, then install/repair the LabelBridge printer. Path: " + path);
+                return (false, "Downloaded package saved. Extract/install it manually, then install/repair the Online Printer printer. Path: " + path);
             }
             var p = Process.Start(psi);
             return (true, "Installer started (approve UAC if prompted). After installation, use Install/Repair Printer. PID: " + (p?.Id.ToString() ?? "?"));
@@ -254,7 +254,8 @@ public sealed class ClientAgent : IAsyncDisposable
                     return (false, "Downloaded update checksum verification failed. Aborting.");
             }
 
-            // Prepare extracted payload + updater script. Installer replaces files and needs elevation; we stage and prompt.
+            // The release package contains one self-elevating setup EXE. Launch it directly.
+            // No PowerShell or CMD helper is used for updates.
             var extractDir = Path.Combine(work, "pkg");
             Directory.CreateDirectory(extractDir);
             if (downloadPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
@@ -266,21 +267,17 @@ public sealed class ClientAgent : IAsyncDisposable
                 File.Copy(downloadPath, Path.Combine(extractDir, Path.GetFileName(downloadPath)), true);
             }
 
-            var installPs1 = Directory.EnumerateFiles(extractDir, "Install.ps1", SearchOption.AllDirectories).FirstOrDefault();
-            var setupCmd = Directory.EnumerateFiles(extractDir, "Setup.cmd", SearchOption.AllDirectories).FirstOrDefault();
-            var exe = Directory.EnumerateFiles(extractDir, "LabelBridge.exe", SearchOption.AllDirectories).FirstOrDefault();
+            var setup = Directory.EnumerateFiles(extractDir, "OnlinePrinterClient-Setup.exe", SearchOption.AllDirectories).FirstOrDefault()
+                        ?? Directory.EnumerateFiles(extractDir, "*Setup*.exe", SearchOption.AllDirectories).FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(setup))
+                return (false, "Update package does not contain OnlinePrinterClient-Setup.exe. Download the installer manually from: " + (url ?? "GitHub releases"));
 
-            var updaterPs1 = Path.Combine(work, "apply-update.ps1");
-            var script = BuildClientUpdaterScript(work, extractDir, installPs1, setupCmd, exe);
-            await File.WriteAllTextAsync(updaterPs1, script, ct);
-
-            // Launch elevated updater; it will stop LabelBridge, run installer/copy, and relaunch.
-            var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe",
-                $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Normal -File \"{updaterPs1}\"")
+            var installDir = AppContext.BaseDirectory.TrimEnd('\\');
+            var psi = new System.Diagnostics.ProcessStartInfo(setup, $"--silent --launch --dir \"{installDir}\"")
             {
                 UseShellExecute = true,
                 Verb = "runas",
-                WorkingDirectory = work
+                WorkingDirectory = Path.GetDirectoryName(setup) ?? work
             };
             try
             {
@@ -288,64 +285,16 @@ public sealed class ClientAgent : IAsyncDisposable
             }
             catch (Exception ex)
             {
-                return (false, "Update downloaded and verified, but could not start elevated installer: " + ex.Message + "\n\nPackage staged at: " + work);
+                return (false, "Update downloaded and verified, but could not start the setup: " + ex.Message + "\n\nPackage staged at: " + work);
             }
 
             _ = Task.Run(async () => { try { await Task.Delay(1500); Environment.Exit(0); } catch { } });
-            return (true, $"Update {latest} downloaded{(expected != null ? " and verified" : "")}. Elevated installer started; LabelBridge will close to complete update.");
+            return (true, $"Update {latest} downloaded{(expected != null ? " and verified" : "")}. Setup started; Online Printer Client will close to complete the update.");
         }
         catch (Exception ex)
         {
             return (false, "Update apply failed: " + ex.Message);
         }
-    }
-
-    private static string BuildClientUpdaterScript(string workDir, string extractDir, string? installPs1, string? setupCmd, string? exePath)
-    {
-        static string Q(string? s) => "'" + (s ?? "").Replace("'", "''") + "'";
-        var installDir = AppContext.BaseDirectory.TrimEnd('\\');
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("$ErrorActionPreference = 'Continue'");
-        sb.AppendLine("Write-Host 'LabelBridge client update' -ForegroundColor Cyan");
-        sb.AppendLine("Start-Sleep -Seconds 1");
-        sb.AppendLine("Get-Process -Name LabelBridge -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue");
-        sb.AppendLine("Start-Sleep -Seconds 1");
-        sb.AppendLine($"$work = {Q(workDir)}");
-        sb.AppendLine($"$extract = {Q(extractDir)}");
-        sb.AppendLine($"$installDir = {Q(installDir)}");
-        if (!string.IsNullOrWhiteSpace(installPs1) && File.Exists(installPs1))
-        {
-            sb.AppendLine($"$installer = {Q(installPs1)}");
-            sb.AppendLine("if (Test-Path $installer) {");
-            sb.AppendLine("  Write-Host 'Running installer...' -ForegroundColor Yellow");
-            sb.AppendLine("  try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -InstallDir $installDir -NoLaunch -Quiet } catch { Write-Warning $_ }");
-            sb.AppendLine("}");
-        }
-        else if (!string.IsNullOrWhiteSpace(setupCmd) && File.Exists(setupCmd))
-        {
-            sb.AppendLine($"$setup = {Q(setupCmd)}");
-            sb.AppendLine("Write-Host 'Running setup...' -ForegroundColor Yellow");
-            sb.AppendLine("try { Start-Process -FilePath $setup -WorkingDirectory (Split-Path $setup) -Verb RunAs -Wait } catch { Write-Warning $_ }");
-        }
-        else if (!string.IsNullOrWhiteSpace(exePath) && File.Exists(exePath))
-        {
-            sb.AppendLine($"$srcExe = {Q(exePath)}");
-            sb.AppendLine("$dstExe = Join-Path $installDir 'LabelBridge.exe'");
-            sb.AppendLine("Write-Host 'Copying updated executable...' -ForegroundColor Yellow");
-            sb.AppendLine("try { New-Item -ItemType Directory -Force -Path $installDir | Out-Null; Copy-Item $srcExe $dstExe -Force } catch { Write-Warning $_ }");
-            sb.AppendLine("$srcDir = Split-Path $srcExe -Parent");
-            sb.AppendLine("Get-ChildItem $srcDir -File -ErrorAction SilentlyContinue | ForEach-Object { try { Copy-Item $_.FullName (Join-Path $installDir $_.Name) -Force } catch {} }");
-        }
-        else
-        {
-            sb.AppendLine("Write-Warning 'No installer or executable found in update package. Open the extracted folder manually.'");
-            sb.AppendLine("Start-Process explorer.exe $extract");
-        }
-        sb.AppendLine("$run = Join-Path $installDir 'LabelBridge.exe'");
-        sb.AppendLine("if (Test-Path $run) { try { Start-Process -FilePath $run } catch {} }");
-        sb.AppendLine("Write-Host 'Update step finished.' -ForegroundColor Green");
-        sb.AppendLine("Start-Sleep -Seconds 2");
-        return sb.ToString();
     }
 
     private async Task PollLoopAsync(CancellationToken ct)

@@ -36,7 +36,7 @@ public sealed class LabelBridgeServer : IDisposable
         _printService.Start();
         _cts = new CancellationTokenSource();
         _loop = Task.Run(() => LoopAsync(_cts.Token));
-        Log.Info($"LabelBridge server listening on {_config.ListenPrefix}");
+        Log.Info($"Online Printer Server listening on {_config.ListenPrefix}");
     }
 
     public void Stop()
@@ -76,7 +76,7 @@ public sealed class LabelBridgeServer : IDisposable
         var res = ctx.Response;
         try
         {
-            res.Headers["Server"] = "LabelBridge";
+            res.Headers["Server"] = "OnlinePrinterServer";
             res.Headers["X-Content-Type-Options"] = "nosniff";
             var path = req.Url?.AbsolutePath ?? "/";
             var method = req.HttpMethod.ToUpperInvariant();
@@ -87,7 +87,7 @@ public sealed class LabelBridgeServer : IDisposable
             res.Headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS";
             if (method == "OPTIONS") { res.StatusCode = 204; res.Close(); return; }
 
-            if (path == "/health") { await WriteJson(res, 200, new { ok = true, name = "LabelBridge", version = _config.CurrentVersion, time = DateTime.UtcNow }); return; }
+            if (path == "/health") { await WriteJson(res, 200, new { ok = true, name = "Online Printer Server", version = _config.CurrentVersion, time = DateTime.UtcNow }); return; }
             if (path == "/" || path.StartsWith("/app")) { await ServeWeb(res, path); return; }
             if (path.StartsWith("/api/")) { await HandleApi(req, res, path, method); return; }
 
@@ -278,7 +278,7 @@ public sealed class LabelBridgeServer : IDisposable
             printer = new { p.Name, p.Host, p.Port, p.Enabled, profile = p.Profile },
             server = new { version = _config.CurrentVersion, repo = _config.Repo },
             driver = GetSelectedDriverInfo(),
-            clientBundle = new { latestClientAssetHint = "LabelBridge-*-win-x64.zip", repo = _config.Repo }
+            clientBundle = new { latestClientAssetHint = "OnlinePrinterClient-*-win-x64.zip", repo = _config.Repo }
         });
     }
 
@@ -648,7 +648,7 @@ public sealed class LabelBridgeServer : IDisposable
             serverBaseUrl = baseUrl,
             repo = _config.Repo,
             version = _config.CurrentVersion,
-            instructions = "Install LabelBridge Windows client from releases, then register and wait for approval. The client will download the approved driver/profile from this server."
+            instructions = "Install Online Printer Client from releases, then register and wait for approval. The client will download the approved driver/profile from this server."
         });
     }
 

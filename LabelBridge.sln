@@ -11,6 +11,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LabelBridge.Windows", "src\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LabelBridge.Relay", "src\LabelBridge.Relay\LabelBridge.Relay.csproj", "{99FB6596-F344-4E23-9C11-F7BB812BA2CF}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "installer", "installer", "{F8EA6857-58BF-4BF1-93BE-5FCF110FE7BF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OnlinePrinter.Setup", "installer\OnlinePrinter.Setup\OnlinePrinter.Setup.csproj", "{B66D6FE1-C1F6-46B9-82E7-87443E2D7249}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -32,10 +36,15 @@ Global
 		{99FB6596-F344-4E23-9C11-F7BB812BA2CF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{99FB6596-F344-4E23-9C11-F7BB812BA2CF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{99FB6596-F344-4E23-9C11-F7BB812BA2CF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B66D6FE1-C1F6-46B9-82E7-87443E2D7249}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B66D6FE1-C1F6-46B9-82E7-87443E2D7249}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B66D6FE1-C1F6-46B9-82E7-87443E2D7249}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B66D6FE1-C1F6-46B9-82E7-87443E2D7249}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{39EDF967-1394-4862-9200-FB27B1CA7093} = {265CA2E3-56B2-4AEA-AD0F-0A2963595C61}
 		{3F10C9F8-C83E-44EE-B270-86C8A2811396} = {265CA2E3-56B2-4AEA-AD0F-0A2963595C61}
 		{99FB6596-F344-4E23-9C11-F7BB812BA2CF} = {265CA2E3-56B2-4AEA-AD0F-0A2963595C61}
+		{B66D6FE1-C1F6-46B9-82E7-87443E2D7249} = {F8EA6857-58BF-4BF1-93BE-5FCF110FE7BF}
 	EndGlobalSection
 EndGlobal

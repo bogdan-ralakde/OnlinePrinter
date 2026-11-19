@@ -40,7 +40,7 @@ internal sealed class MainForm : Form
         _agent.JobEvent += (j, m) => BeginInvokeSafe(() => { AppendLog($"{m}: {j.Name} ({j.Size} bytes)"); RefreshUi(); });
         _agent.ConfigUpdated += cfg => BeginInvokeSafe(() => { _lastConfig = cfg; ApplyServerConfig(cfg); RefreshUi(); });
 
-        Text = "LabelBridge Client";
+        Text = "Online Printer Client";
         Icon = IconFactory.AppIcon(32);
         MinimumSize = new Size(980, 700);
         Size = new Size(1120, 760);
@@ -67,8 +67,8 @@ internal sealed class MainForm : Form
     private void BuildUi()
     {
         _header = new Panel { Dock = DockStyle.Top, Height = 74, BackColor = Theme.Card, Padding = new Padding(18, 14, 18, 10) };
-        var title = new Label { Text = "LabelBridge Client", Font = Theme.H1, AutoSize = true, Location = new Point(18, 10), ForeColor = Theme.Text };
-        _subtitle = new Label { Text = "Send print jobs to LabelBridge server", Font = Theme.Small, AutoSize = true, Location = new Point(20, 42), ForeColor = Theme.Muted };
+        var title = new Label { Text = "Online Printer Client", Font = Theme.H1, AutoSize = true, Location = new Point(18, 10), ForeColor = Theme.Text };
+        _subtitle = new Label { Text = "Send print jobs to the Online Printer Server", Font = Theme.Small, AutoSize = true, Location = new Point(20, 42), ForeColor = Theme.Muted };
         _pill = new Pill { Location = new Point(360, 18) }; _pill.Set("Stopped", Theme.GraySoft, Theme.Muted);
         _btnStartStop = Ui.Button("Start", primary: true); _btnStartStop.Location = new Point(760, 18); _btnStartStop.Anchor = AnchorStyles.Top | AnchorStyles.Right; _btnStartStop.Click += async (_, _) => await ToggleAgentAsync();
         _header.Controls.AddRange(new Control[] { title, _subtitle, _pill, _btnStartStop });
@@ -97,7 +97,7 @@ internal sealed class MainForm : Form
         var card = new Card("Status");
         _lblStatus = Ui.Text("Stopped", muted:false, font: Theme.BodyMedium);
         _lblProfile = Ui.Wrap("No server profile loaded yet.");
-        var hint = Ui.Wrap("Flow: connect to LabelBridge server -> request approval -> admin approves in web UI -> client downloads printer/profile/driver info -> install/repair 'LabelBridge' virtual printer -> print PDFs from any app to it; jobs upload to server and print directly on the network printer.");
+        var hint = Ui.Wrap("Flow: connect to the Online Printer Server -> request approval -> admin approves in web UI -> client downloads printer/profile/driver info -> install/repair the 'Online Printer' virtual printer -> print PDFs from any app to it; jobs upload to server and print directly on the network printer.");
         card.AddRow(_lblStatus);
         card.AddRow(_lblProfile);
         card.AddRow(new Panel{Height=8});
@@ -124,7 +124,7 @@ internal sealed class MainForm : Form
         card.AddRow(_lblReq);
 
         var card2 = new Card("Server-provided printer/profile & driver");
-        var txt = Ui.Wrap("After approval, the server provides printer/profile settings and optional driver package metadata. Download/install the driver if provided (admin/UAC may be required), then install/repair the local 'LabelBridge' virtual printer in the Virtual Printer tab.");
+        var txt = Ui.Wrap("After approval, the server provides printer/profile settings and optional driver package metadata. Download/install the driver if provided (admin/UAC may be required), then install/repair the local 'Online Printer' virtual printer in the Virtual Printer tab.");
         card2.AddRow(txt);
         var btnDownload = Ui.Button("Download server driver"); btnDownload.Click += async (_,_) => await DownloadDriverAsync();
         var btnInstallDriver = Ui.Button("Run/install downloaded driver"); btnInstallDriver.Click += (_,_) => InstallDriver();
@@ -136,7 +136,7 @@ internal sealed class MainForm : Form
     private void BuildPrinterTab()
     {
         var stack = new CardsStack();
-        var card = new Card("Local virtual printer (LabelBridge)");
+        var card = new Card("Local virtual printer");
         _txtPrinterName = Ui.Input(_settings.VirtualPrinterName, 260);
         _numPort = Ui.Number(_settings.CapturePort, 1024, 65535, 120);
         _cmbDriver = Ui.Combo(520); _cmbDriver.DropDownStyle = ComboBoxStyle.DropDown;
@@ -145,7 +145,7 @@ internal sealed class MainForm : Form
         _btnProps = Ui.Button("Printer properties"); _btnProps.Click += (_,_) => PrinterManager.OpenPrinterProperties(_txtPrinterName.Text.Trim());
         _btnWinPrinters = Ui.Button("Windows Printers"); _btnWinPrinters.Click += (_,_) => PrinterManager.OpenWindowsPrinters();
         _btnDriverDownload = Ui.Button("Zebra driver download"); _btnDriverDownload.Click += (_,_) => PrinterManager.OpenDriverDownload();
-        card.AddRow(Ui.Wrap("Install a local virtual printer so any Windows app can print to 'LabelBridge'. Jobs are captured and uploaded to the approved server, which forwards them to the configured network printer. Use the driver/profile provided by your server admin for your printer model and label format."));
+        card.AddRow(Ui.Wrap("Install a local virtual printer so any Windows app can print to 'Online Printer'. Jobs are captured and uploaded to the approved server, which forwards them to the configured network printer. Use the driver/profile provided by your server admin for your printer model and label format."));
         card.AddRow(Ui.Field("Printer name", _txtPrinterName));
         card.AddRow(Ui.Field("Capture port", _numPort));
         card.AddRow(Ui.Field("Driver", _cmbDriver));
@@ -189,7 +189,7 @@ internal sealed class MainForm : Form
     private void BuildTray()
     {
         _tray.Icon = IconFactory.AppIcon(16);
-        _tray.Text = "LabelBridge Client";
+        _tray.Text = "Online Printer Client";
         _tray.Visible = true;
         var menu = new ContextMenuStrip();
         menu.Items.Add("Open", null, (_,_) => ShowFromTray());
@@ -311,7 +311,7 @@ internal sealed class MainForm : Form
 
             if (hasUpdate)
             {
-                var prompt = msg + "\n\nDownload and install the Windows client update now? (Admin/UAC may be required. LabelBridge will close to complete the update.)\n\nServer updates can be applied from the server web UI (Settings) on Linux/systemd installs, or by running the server install script for the target release.";
+                var prompt = msg + "\n\nDownload and install the Windows client update now? (Admin/UAC may be required. Online Printer Client will close to complete the update.)\n\nServer updates can be applied from the server web UI (Settings) on Linux/systemd installs, or by running the server install script for the target release.";
                 if (Ui.Confirm(this, prompt, "Update available"))
                 {
                     AppendLog("Downloading and applying client update...");
@@ -354,7 +354,7 @@ internal sealed class MainForm : Form
 
         _lblProfile.Text = profileText;
         var lbl = _tabPrinter.Controls.Find("lblSrvProfile", true).FirstOrDefault() as Label;
-        if (lbl != null) lbl.Text = profileText + "\n\nNote: configure Printing Preferences/Defaults for the local 'LabelBridge' printer to match this profile if your driver requires it.";
+        if (lbl != null) lbl.Text = profileText + "\n\nNote: configure Printing Preferences/Defaults for the local 'Online Printer' printer to match this profile if your driver requires it.";
 
         if (!string.IsNullOrWhiteSpace(cfg.Profile.DriverHint))
         {
@@ -373,7 +373,7 @@ internal sealed class MainForm : Form
     {
         _settings.ServerUrl = (_txtServerUrl.Text ?? "").Trim().TrimEnd('/');
         _settings.DeviceName = string.IsNullOrWhiteSpace(_txtDevice.Text) ? Environment.MachineName : _txtDevice.Text.Trim();
-        _settings.VirtualPrinterName = string.IsNullOrWhiteSpace(_txtPrinterName.Text) ? "LabelBridge" : _txtPrinterName.Text.Trim();
+        _settings.VirtualPrinterName = string.IsNullOrWhiteSpace(_txtPrinterName.Text) ? "Online Printer" : _txtPrinterName.Text.Trim();
         _settings.CapturePort = (int)_numPort.Value;
         if (!string.IsNullOrWhiteSpace(_cmbDriver.Text)) _settings.VirtualPrinterDriver = _cmbDriver.Text.Trim();
         _settings.Save();
@@ -454,7 +454,7 @@ internal sealed class MainForm : Form
     {
         if (!_allowClose && _settings.MinimizeToTray && e.CloseReason == CloseReason.UserClosing)
         {
-            e.Cancel = true; Hide(); _tray.ShowBalloonTip(1500, "LabelBridge", "Still running in the system tray.", ToolTipIcon.Info); return;
+            e.Cancel = true; Hide(); _tray.ShowBalloonTip(1500, "Online Printer Client", "Still running in the system tray.", ToolTipIcon.Info); return;
         }
         _timer.Stop(); _tray.Visible = false;
         PersistSettingsFromUi();

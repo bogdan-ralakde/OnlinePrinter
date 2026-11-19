@@ -10,7 +10,7 @@ public static class WebUI
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LabelBridge Server</title>
+<title>Online Printer Server</title>
 <style>
 :root{--bg:#0b1020;--card:#141b33;--muted:#8fa0c2;--text:#e9efff;--accent:#4da3ff;--ok:#2ecc71;--warn:#f4b400;--bad:#ff5c7a;--line:#263252}
 *{box-sizing:border-box} body{margin:0;font-family:Segoe UI,system-ui,Arial,sans-serif;background:linear-gradient(180deg,#0b1020,#0e1630);color:var(--text)}
@@ -40,7 +40,7 @@ nav button.active{outline:2px solid #2f7fd6}
 </head>
 <body>
 <header>
-  <div><h1>LabelBridge Server</h1><div class="muted small" id="hdrSub">Print server & web UI</div></div>
+  <div><h1>Online Printer Server</h1><div class="muted small" id="hdrSub">Web UI & print queue</div></div>
   <div class="row"><span id="userInfo" class="muted small"></span><button id="logoutBtn" class="hidden" onclick="logout()">Logout</button></div>
 </header>
 <div class="wrap">
@@ -222,7 +222,7 @@ async function loadSettings(){ const me=await api('/api/auth/me'); const info=aw
     <div class="card"><h2>Client connection info</h2>
       <div class="small muted">Windows clients connect to this server over the internet/LAN using this base URL (put HTTPS reverse proxy in front for internet use).</div>
       <label>Server base URL (as seen by this browser)</label><input readonly value="${esc(info.serverBaseUrl||'')}">
-      <pre class="small">Client flow:\n1. Install/run LabelBridge Windows client and enter server URL\n2. Submit connection request and wait for admin approval\n3. Admin approves client in Clients tab\n4. Client receives printer/profile and optional driver package from server\n5. Client downloads/installs driver and installs/repairs local "LabelBridge" virtual printer (admin/UAC may be required)\n6. Print from any app to "LabelBridge" - jobs upload to server and server forwards them directly to the configured network printer (TCP/9100)</pre>
+      <pre class="small">Client flow:\n1. Install the Online Printer Client setup and enter this server URL\n2. Submit connection request and wait for admin approval\n3. Admin approves client in Clients tab\n4. Client receives printer/profile and optional driver package from server\n5. Client downloads/installs driver and installs/repairs the local "Online Printer" virtual printer (admin/UAC may be required)\n6. Print from any app to "Online Printer" - jobs upload to server and server forwards them directly to the configured network printer (TCP/9100)</pre>
     </div>
     <div class="card"><h2>Server update</h2>${updHtml}</div>
   </div>`;

@@ -1,5 +1,5 @@
 ﻿#!/usr/bin/env bash
-# LabelBridge server installer for Linux (systemd: VM / bare metal / container).
+# Online Printer Server installer for Linux (systemd: VM / bare metal / container).
 #
 # Installs LabelBridge as a systemd service. If a local binary/bundle is not
 # provided or found next to this script, it automatically downloads the latest
@@ -57,20 +57,20 @@ usage() {
 LabelBridge installer (Linux, systemd)
 
 Install latest release (auto-download):
-  curl -fsSL https://raw.githubusercontent.com/${REPO}/master/scripts/install-lxc.sh | sudo bash
+  curl -fsSL https://raw.githubusercontent.com/${REPO}/master/scripts/install-linux.sh | sudo bash
 
 Install from local binary/bundle:
-  sudo bash install-lxc.sh [--local /path/to/${BIN_NAME}]
+  sudo bash install-linux.sh [--local /path/to/${BIN_NAME}]
 
 Uninstall:
-  sudo bash install-lxc.sh --uninstall           # keep config/data
-  sudo bash install-lxc.sh --uninstall --purge   # remove everything
+  sudo bash install-linux.sh --uninstall           # keep config/data
+  sudo bash install-linux.sh --uninstall --purge   # remove everything
 
 Env: LABELBRIDGE_REPO=${REPO}  LABELBRIDGE_VERSION=${VERSION}  LABELBRIDGE_ASSET=${ASSET}
 EOF
 }
 
-need_root() { [[ ${EUID:-$(id -u)} -eq 0 ]] || die "Run as root (sudo bash install-lxc.sh)"; }
+need_root() { [[ ${EUID:-$(id -u)} -eq 0 ]] || die "Run as root (sudo bash install-linux.sh)"; }
 have_cmd()  { command -v "$1" >/dev/null 2>&1; }
 
 SCRIPT_DIR=""
@@ -147,7 +147,7 @@ download_release() {
     info "Downloading: ${asset_url}"
     local archive="${TMPDIR_DL}/${ASSET}"
     if ! fetch "$asset_url" "$archive"; then
-      die "Download failed. Ensure '${REPO}' is public and release asset '${ASSET}' exists (version: ${VERSION}). Or install locally: sudo bash install-lxc.sh --local /path/to/${BIN_NAME}"
+      die "Download failed. Ensure '${REPO}' is public and release asset '${ASSET}' exists (version: ${VERSION}). Or install locally: sudo bash install-linux.sh --local /path/to/${BIN_NAME}"
     fi
 
     case "$archive" in
@@ -225,7 +225,7 @@ install_main() {
       info "No LB_ADMIN_SECRET provided and not running interactively; admin password will be created in the web UI on first run."
     fi
     cat > "$ENV_FILE" <<EOF
-# LabelBridge server configuration
+# Online Printer Server configuration
 # Optional: pre-set the admin password. If left blank, open the web UI on first run to create the admin password.
 LB_LISTEN=http://+:8080/
 LB_DATA=${DATA_DIR}
@@ -241,7 +241,7 @@ EOF
 
   cat > "$SERVICE_FILE" <<EOF
 [Unit]
-Description=LabelBridge server
+Description=Online Printer Server
 After=network-online.target
 Wants=network-online.target
 
@@ -276,7 +276,7 @@ EOF
   ip="$(detect_ip)"; listen_port="$(get_env_value "LB_LISTEN" "$ENV_FILE")"; [[ -n "$listen_port" ]] || listen_port="http://+:8080/"
 
   echo
-  echo -e "${GREEN}LabelBridge server installed.${NC}"
+  echo -e "${GREEN}Online Printer Server installed.${NC}"
   echo "  Service : $APP_NAME ($(systemctl is-active "$APP_NAME" 2>/dev/null || echo unknown))"
   echo "  Config  : $ENV_FILE"
   echo "  Data    : $DATA_DIR"

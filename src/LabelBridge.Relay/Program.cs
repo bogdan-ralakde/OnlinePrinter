@@ -16,7 +16,7 @@ internal static class Program
     private static int Main(string[] args)
     {
         if (args.Any(a => a is "--help" or "-h" or "/?")) { PrintHelp(); return 0; }
-        if (args.Any(a => a is "--version")) { Console.WriteLine("LabelBridge server " + GetVersion()); return 0; }
+        if (args.Any(a => a is "--version")) { Console.WriteLine("Online Printer Server " + GetVersion()); return 0; }
 
         var probe = Arg(args, "--health-check");
         if (!string.IsNullOrWhiteSpace(probe))
@@ -51,7 +51,7 @@ internal static class Program
         Log.Minimum = LogLevel.Info;
         Directory.CreateDirectory(config.DataDir);
 
-        Log.Info($"LabelBridge server starting - version {config.CurrentVersion}");
+        Log.Info($"Online Printer Server starting - version {config.CurrentVersion}");
         Log.Info($"Data directory: {Path.GetFullPath(config.DataDir)}");
 
         using var server = new LabelBridgeServer(config);
@@ -65,7 +65,7 @@ internal static class Program
         }
 
         Console.WriteLine();
-        Console.WriteLine("  LabelBridge server is running");
+        Console.WriteLine("  Online Printer Server is running");
         Console.WriteLine("  -----------------------------");
         Console.WriteLine($"  Listening : {config.ListenPrefix}");
         Console.WriteLine($"  Data      : {Path.GetFullPath(config.DataDir)}");
@@ -88,7 +88,7 @@ internal static class Program
     private static void PrintHelp()
     {
         Console.WriteLine("""
-LabelBridge server - all-in-one print server with web UI
+Online Printer Server - all-in-one print server with web UI
 
 Usage:
   LabelBridge.Relay [options]
